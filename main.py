@@ -118,7 +118,10 @@ def load_data():
         return None, None
 
 # Function to create a matching prompt
-def create_claude_prompt(search_type, search_value, doctors_df, nurses_df):
+def create_claude_prompt(search_type, search_value, doctors_df, nurses_df, filters=None):
+    if filters is None:
+        filters = {}
+        
     if search_type == "md":
         # Find the doctor in the dataframe
         doctor_row = doctors_df[
@@ -142,6 +145,21 @@ def create_claude_prompt(search_type, search_value, doctors_df, nurses_df):
         - Email: {doctor['Email']}
         - State: {doctor['Residing State  (Lives In)']}
         - Onboarded: {doctor['Create Date']}
+        """
+        
+        # Add filter requirements to the prompt
+        if filters.get("experience"):
+            prompt += f"\n\nPreference for nurses with experience level: {filters['experience']}"
+            
+        if filters.get("location") == "Same State Only":
+            prompt += "\nLocation requirement: Only include nurses in the same state as the doctor."
+        elif filters.get("location") == "Nearby States Acceptable":
+            prompt += "\nLocation preference: Prioritize nurses in the same state, but nearby states are acceptable."
+            
+        if filters.get("requirements") and filters.get("requirements").strip():
+            prompt += f"\n\nAdditional requirements to consider:\n{filters['requirements']}"
+        
+        prompt += """
         
         Using the doctor information above, analyze the following nurse candidates and identify the top 3 best matches based on:
         1. Location match (highest priority - same state is ideal)
@@ -158,10 +176,58 @@ def create_claude_prompt(search_type, search_value, doctors_df, nurses_df):
         Available Nurses:
         """
         
-        # Add nurse candidates
-        same_state_nurses = nurses_df[nurses_df['State (MedSpa Premise)'] == doctor['Residing State  (Lives In)']]
-        other_nurses = nurses_df[nurses_df['State (MedSpa Premise)'] != doctor['Residing State  (Lives In)']]
-        selected_nurses = pd.concat([same_state_nurses.head(10), other_nurses.head(10)])
+        # Add nurse candidates - prioritize by filters
+        filtered_nurses = nurses_df.copy()
+        
+        # Apply experience filter if specified
+        if filters.get("experience") and filters.get("experience") != "Any":
+            filtered_nurses = filtered_nurses[
+                filtered_nurses['Experience Level  '].str.contains(filters.get("experience"), na=False)
+            ]
+        
+        # Handle location filtering
+        if filters.get("location") == "Same State Only":
+            same_state_nurses = filtered_nurses[filtered_nurses['State (MedSpa Premise)'] == doctor['Residing State  (Lives In)']]
+            selected_nurses = same_state_nurses.head(20)
+        else:
+            same_state_nurses = filtered_nurses[filtered_nurses['State (MedSpa Premise)'] == doctor['Residing State  (Lives In)']]
+            other_nurses = filtered_nurses[filtered_nurses['State (MedSpa Premise)'] != doctor['Residing State  (Lives In)']]
+            
+            # If "Nearby States" is selected, we could implement a more sophisticated 
+            # state proximity filter here in the future
+            
+            selected_nurses = pd.concat([same_state_nurses.head(10), other_nurses.head(10)])
+        
+        # Apply keyword filter from additional requirements if specified
+        if filters.get("requirements") and filters.get("requirements").strip():
+            keywords = filters.get("requirements").lower().split()
+            keyword_matches = []
+            
+            for _, nurse in selected_nurses.iterrows():
+                # Combine all text fields for keyword search
+                all_text = ' '.join([
+                    str(nurse['Provider License Type']) if pd.notna(nurse['Provider License Type']) else '',
+                    str(nurse['Experience Level  ']) if pd.notna(nurse['Experience Level  ']) else '',
+                    str(nurse['Services Provided']) if pd.notna(nurse['Services Provided']) else '',
+                    str(nurse['Addt\'l Service Notes']) if pd.notna(nurse['Addt\'l Service Notes']) else ''
+                ]).lower()
+                
+                # Count how many keywords match
+                match_count = sum(1 for keyword in keywords if keyword in all_text)
+                keyword_matches.append((match_count, nurse))
+            
+            # Sort by number of keyword matches (highest first)
+            keyword_matches.sort(reverse=True, key=lambda x: x[0])
+            
+            # Take top 20 matches if available
+            top_matches = [match[1] for match in keyword_matches[:20]]
+            if top_matches:
+                selected_nurses = pd.DataFrame(top_matches)
+        
+        # If no nurses match the filters, fall back to showing some results
+        if selected_nurses.empty:
+            selected_nurses = nurses_df.head(20)
+            prompt += "\nNote: No nurses matched all specified filters, so showing a general selection.\n\n"
         
         for _, nurse in selected_nurses.iterrows():
             # Safe extraction of fields
@@ -244,7 +310,20 @@ def create_claude_prompt(search_type, search_value, doctors_df, nurses_df):
         - Additional Notes: """
         prompt += nurse_notes + "\n\n"
         
+        # Add filter requirements to the prompt
+        if filters.get("onboarding") and filters.get("onboarding") != "Any":
+            prompt += f"\nPreference for medical directors who {filters['onboarding']}"
+            
+        if filters.get("location") == "Same State Only":
+            prompt += "\nLocation requirement: Only include medical directors in the same state as the nurse."
+        elif filters.get("location") == "Nearby States Acceptable":
+            prompt += "\nLocation preference: Prioritize medical directors in the same state, but nearby states are acceptable."
+            
+        if filters.get("service_requirements") and filters.get("service_requirements").strip():
+            prompt += f"\n\nAdditional service requirements to consider:\n{filters['service_requirements']}"
+        
         prompt += """
+        
         Using the nurse information above, analyze the following medical directors and identify the top 3 best matches based on:
         1. Location match (highest priority - same state is ideal)
         2. Experience level compatibility (experienced doctors can mentor newer nurses)
@@ -260,13 +339,39 @@ def create_claude_prompt(search_type, search_value, doctors_df, nurses_df):
         Available Medical Directors:
         """
         
-        # Add doctor candidates
+        # Filter doctors based on criteria
+        filtered_doctors = doctors_df.copy()
+        
+        # Apply location filter
+        if filters.get("location") == "Same State Only" and nurse_state != "Unknown":
+            filtered_doctors = filtered_doctors[filtered_doctors['Residing State  (Lives In)'] == nurse_state]
+        
+        # Apply keyword filter from service requirements if specified
+        if filters.get("service_requirements") and filters.get("service_requirements").strip():
+            keywords = filters.get("service_requirements").lower().split()
+            filtered_list = []
+            
+            for _, doctor in filtered_doctors.iterrows():
+                doctor_info = f"{doctor['First Name']} {doctor['Last Name']} {doctor['Email']} {doctor['Residing State  (Lives In)']}"
+                match_count = sum(1 for keyword in keywords if keyword.lower() in doctor_info.lower())
+                if match_count > 0:
+                    filtered_list.append(doctor)
+            
+            if filtered_list:
+                filtered_doctors = pd.DataFrame(filtered_list)
+        
+        # If filters resulted in no doctors, fall back to original selection method
+        if filtered_doctors.empty:
+            filtered_doctors = doctors_df
+            prompt += "\nNote: No medical directors matched all specified filters, so showing a general selection.\n\n"
+        
+        # Select doctors to include
         if nurse_state != "Unknown":
-            same_state_doctors = doctors_df[doctors_df['Residing State  (Lives In)'].str.contains(nurse_state, na=False)]
-            other_doctors = doctors_df[~doctors_df['Residing State  (Lives In)'].str.contains(nurse_state, na=False)]
+            same_state_doctors = filtered_doctors[filtered_doctors['Residing State  (Lives In)'] == nurse_state]
+            other_doctors = filtered_doctors[filtered_doctors['Residing State  (Lives In)'] != nurse_state]
             selected_doctors = pd.concat([same_state_doctors.head(10), other_doctors.head(10)])
         else:
-            selected_doctors = doctors_df.head(20)
+            selected_doctors = filtered_doctors.head(20)
         
         for _, doctor in selected_doctors.iterrows():
             doctor_info = f"""
@@ -300,13 +405,23 @@ def create_claude_prompt(search_type, search_value, doctors_df, nurses_df):
         return prompt, None
     
     elif search_type == "manual":
-        # Manual entry form
+        # Manual entry form with additional filter context
         prompt = f"""
         You are an Operations Manager at Moxie tasked with matching medical directors with nurses.
         
         A user has submitted the following information:
         {search_value}
         
+        """
+        
+        # Add filter requirements
+        if filters.get("person_type"):
+            prompt += f"This person is identified as a {filters.get('person_type')}.\n\n"
+            
+        if filters.get("matching_priorities") and filters.get("matching_priorities").strip():
+            prompt += f"Matching priorities to consider:\n{filters.get('matching_priorities')}\n\n"
+        
+        prompt += """
         Based on this information, identify if this is a doctor or a nurse, and suggest potential matches from our database.
         
         For each match, provide:
@@ -316,18 +431,18 @@ def create_claude_prompt(search_type, search_value, doctors_df, nurses_df):
         4. A match score out of 10
         
         Format your response as JSON with the following structure:
-        {{
+        {
             "person_type": "doctor" or "nurse",
             "matches": [
-                {{
+                {
                     "name": "Name",
                     "email": "email@example.com",
                     "match_score": 8.5,
                     "reasoning": "Detailed explanation of why this is a good match"
-                }},
+                },
                 ...
             ]
-        }}
+        }
         
         Only include the JSON in your response, nothing else.
         """
@@ -337,10 +452,9 @@ def create_claude_prompt(search_type, search_value, doctors_df, nurses_df):
 # Function to call Claude API
 def query_claude(prompt, api_key):
     try:
-        # Initialize the Anthropic client with explicit API key
+        # Initialize the client without extra parameters
         client = anthropic.Anthropic(api_key=api_key)
         
-        # Create a message using the client
         message = client.messages.create(
             model="claude-3-5-sonnet-20240620",
             max_tokens=4000,
@@ -350,13 +464,11 @@ def query_claude(prompt, api_key):
                 {"role": "user", "content": prompt}
             ]
         )
-        
-        # Extract and return the text content
         return message.content[0].text
     except Exception as e:
-        # Log the specific error for debugging
-        st.error(f"Claude API error: {str(e)}")
-        return json.dumps({"error": str(e)})
+        # Log error and return as JSON
+        st.error(f"API error: {str(e)}")
+        return json.dumps({"error": f"API error: {str(e)}"})
 
 # Main application content
 doctors_df, nurses_df = load_data()
@@ -371,16 +483,10 @@ else:
     with col2:
         st.metric("Nurses (RN/NP)", len(nurses_df))
     with col3:
-        st.markdown("**Powered by:** ChatGPT")
+        st.markdown("**Powered by:** Claude AI")
     
     # Get Claude API key from environment variable
     claude_api_key = os.getenv("ANTHROPIC_API_KEY", "")
-    
-    # Show API key status
-    if claude_api_key:
-        st.success("API key is configured and ready to use")
-    else:
-        st.error("API key is not configured. Please set the ANTHROPIC_API_KEY environment variable")
     
     # Search options
     st.markdown("<h2 class='subheader'>Find Matches</h2>", unsafe_allow_html=True)
@@ -403,12 +509,33 @@ else:
         doctor_names = [f"{row['First Name']} {row['Last Name']}" for _, row in doctors_df.iterrows()]
         selected_doctor = st.selectbox("Select Medical Director:", [""] + doctor_names)
         
+        # Add specific filtering criteria
+        st.subheader("Nurse Preference Filters")
+        col1, col2 = st.columns(2)
+        with col1:
+            exp_filter = st.selectbox("Experience Level:", ["Any", "New Graduate", "1-3 years", "3-5 years", "5+ years"])
+        with col2:
+            location_preference = st.radio("Location Priority:", ["Same State Only", "Nearby States Acceptable", "Any Location"])
+        
+        additional_requirements = st.text_area("Additional Requirements (service types, availability, etc.):", height=100)
+        
         if selected_doctor and st.button("Find Matching Nurses"):
             if not claude_api_key:
                 st.error("API key is not configured. Please set the ANTHROPIC_API_KEY environment variable.")
             else:
                 with st.spinner("Analyzing and finding the best nurse matches..."):
-                    prompt, error = create_claude_prompt(search_type_key, selected_doctor, doctors_df, nurses_df)
+                    # Update prompt creation to include the filters
+                    prompt, error = create_claude_prompt(
+                        search_type_key, 
+                        selected_doctor, 
+                        doctors_df, 
+                        nurses_df,
+                        filters={
+                            "experience": exp_filter if exp_filter != "Any" else None,
+                            "location": location_preference,
+                            "requirements": additional_requirements
+                        }
+                    )
                     
                     if error:
                         st.error(error)
@@ -441,12 +568,33 @@ else:
         nurse_names = [str(row['Ticket Number Counter']) for _, row in nurses_df.iterrows() if pd.notna(row['Ticket Number Counter'])]
         selected_nurse = st.selectbox("Select Nurse:", [""] + nurse_names)
         
+        # Add specific filtering criteria
+        st.subheader("MD Preference Filters")
+        col1, col2 = st.columns(2)
+        with col1:
+            onboarding_filter = st.radio("Onboarding Support:", ["Any", "Needs Significant Support", "Minimal Support Needed"])
+        with col2:
+            location_preference = st.radio("Location Priority:", ["Same State Only", "Nearby States Acceptable", "Any Location"])
+        
+        service_requirements = st.text_area("Specific Service Requirements:", height=100, 
+                                       placeholder="E.g., Must be experienced with Botox, looking for mentor in fillers, etc.")
+        
         if selected_nurse and st.button("Find Matching Medical Directors"):
             if not claude_api_key:
                 st.error("API key is not configured. Please set the ANTHROPIC_API_KEY environment variable.")
             else:
                 with st.spinner("Analyzing and finding the best medical director matches..."):
-                    prompt, error = create_claude_prompt(search_type_key, selected_nurse, doctors_df, nurses_df)
+                    prompt, error = create_claude_prompt(
+                        search_type_key, 
+                        selected_nurse, 
+                        doctors_df, 
+                        nurses_df,
+                        filters={
+                            "onboarding": onboarding_filter if onboarding_filter != "Any" else None,
+                            "location": location_preference,
+                            "service_requirements": service_requirements
+                        }
+                    )
                     
                     if error:
                         st.error(error)
@@ -488,14 +636,34 @@ else:
         </div>
         """, unsafe_allow_html=True)
         
+        # Add more specific options for manual entry
+        col1, col2 = st.columns(2)
+        with col1:
+            person_type = st.radio("This person is a:", ["Unknown", "Medical Director", "Nurse"])
+        
         user_input = st.text_area("Enter professional information:", height=150)
+        
+        matching_priorities = st.text_area(
+            "Specific matching priorities:", 
+            height=100,
+            placeholder="E.g., Must be in same state, looking for someone with Botox experience, etc."
+        )
         
         if user_input and st.button("Find Matches"):
             if not claude_api_key:
                 st.error("API key is not configured. Please set the ANTHROPIC_API_KEY environment variable.")
             else:
                 with st.spinner("Analyzing input and finding the best matches..."):
-                    prompt, error = create_claude_prompt(search_type_key, user_input, doctors_df, nurses_df)
+                    prompt, error = create_claude_prompt(
+                        search_type_key, 
+                        user_input, 
+                        doctors_df, 
+                        nurses_df,
+                        filters={
+                            "person_type": person_type if person_type != "Unknown" else None,
+                            "matching_priorities": matching_priorities
+                        }
+                    )
                     
                     if error:
                         st.error(error)
@@ -525,19 +693,19 @@ else:
                             st.text(response)
     
     # Explanation of how it works
-    with st.expander("How the ChatGPT Matching System Works"):
+    with st.expander("How the Claude AI Matching System Works"):
         st.markdown("""
-        This matching system uses ChatGPT, OpenAI's advanced AI assistant, to intelligently match medical directors with nurses based on multiple factors:
+        This matching system uses Claude AI, Anthropic's advanced AI assistant, to intelligently match medical directors with nurses based on multiple factors:
         
-        1. **Location Matching**: ChatGPT prioritizes professionals in the same state to ensure licensing compatibility.
+        1. **Location Matching**: Claude prioritizes professionals in the same state to ensure licensing compatibility.
         
-        2. **Experience Level Compatibility**: ChatGPT considers the experience levels of both professionals, often matching experienced doctors with newer nurses who need mentorship.
+        2. **Experience Level Compatibility**: Claude considers the experience levels of both professionals, often matching experienced doctors with newer nurses who need mentorship.
         
-        3. **Service Alignment**: ChatGPT analyzes the services provided by nurses and looks for doctors with relevant expertise.
+        3. **Service Alignment**: Claude analyzes the services provided by nurses and looks for doctors with relevant expertise.
         
-        4. **Notes Analysis**: ChatGPT reviews additional notes for special requirements or preferences that might impact matching.
+        4. **Notes Analysis**: Claude reviews additional notes for special requirements or preferences that might impact matching.
         
-        5. **Match Score**: ChatGPT provides a score out of 10 with detailed reasoning to explain why each match works well.
+        5. **Match Score**: Claude provides a score out of 10 with detailed reasoning to explain why each match works well.
         
         The system intelligently processes information from your CSV files to find the most compatible professional pairings based on context and details that might not be captured by a simple algorithm.
         """)
