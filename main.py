@@ -517,7 +517,7 @@ else:
     with col2:
         st.metric("Nurses (RN/NP)", len(nurses_df))
     with col3:
-        st.markdown("**Powered by:** Claude AI")
+        st.markdown("**Powered by:** ChatGPT")
     
     # Get Claude API key from environment variable
     claude_api_key = os.getenv("ANTHROPIC_API_KEY", "")
@@ -557,7 +557,7 @@ else:
             if not claude_api_key:
                 st.error("API key is not configured. Please set the ANTHROPIC_API_KEY environment variable.")
             else:
-                with st.spinner("Analyzing and finding the best nurse matches..."):
+                with st.spinner("Finding the best nurse matches..."):
                     # Update prompt creation to include the filters
                     prompt, error = create_claude_prompt(
                         search_type_key, 
@@ -621,7 +621,7 @@ else:
             if not claude_api_key:
                 st.error("API key is not configured. Please set the ANTHROPIC_API_KEY environment variable.")
             else:
-                with st.spinner("Analyzing and finding the best medical director matches..."):
+                with st.spinner("Finding the best medical director matches..."):
                     prompt, error = create_claude_prompt(
                         search_type_key, 
                         selected_nurse, 
@@ -695,7 +695,7 @@ else:
             if not claude_api_key:
                 st.error("API key is not configured. Please set the ANTHROPIC_API_KEY environment variable.")
             else:
-                with st.spinner("Analyzing input and finding the best matches..."):
+                with st.spinner("Finding the best matches..."):
                     prompt, error = create_claude_prompt(
                         search_type_key, 
                         user_input, 
@@ -739,19 +739,19 @@ else:
                             st.text(response)
     
     # Explanation of how it works
-    with st.expander("How the Claude AI Matching System Works"):
+    with st.expander("How the ChatGPT Matching System Works"):
         st.markdown("""
-        This matching system uses Claude AI, Anthropic's advanced AI assistant, to intelligently match medical directors with nurses based on multiple factors:
+        This matching system uses ChatGPT, OpenAI's advanced AI assistant, to intelligently match medical directors with nurses based on multiple factors:
         
-        1. **Location Matching**: Claude prioritizes professionals in the same state to ensure licensing compatibility.
+        1. **Location Matching**: ChatGPT prioritizes professionals in the same state to ensure licensing compatibility.
         
-        2. **Experience Level Compatibility**: Claude considers the experience levels of both professionals, often matching experienced doctors with newer nurses who need mentorship.
+        2. **Experience Level Compatibility**: ChatGPT considers the experience levels of both professionals, often matching experienced doctors with newer nurses who need mentorship.
         
-        3. **Service Alignment**: Claude analyzes the services provided by nurses and looks for doctors with relevant expertise.
+        3. **Service Alignment**: ChatGPT analyzes the services provided by nurses and looks for doctors with relevant expertise.
         
-        4. **Notes Analysis**: Claude reviews additional notes for special requirements or preferences that might impact matching.
+        4. **Notes Analysis**: ChatGPT reviews additional notes for special requirements or preferences that might impact matching.
         
-        5. **Match Score**: Claude provides a score out of 10 with detailed reasoning to explain why each match works well.
+        5. **Match Score**: ChatGPT provides a score out of 10 with detailed reasoning to explain why each match works well.
         
         The system intelligently processes information from your CSV files to find the most compatible professional pairings based on context and details that might not be captured by a simple algorithm.
         
