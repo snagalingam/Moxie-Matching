@@ -336,9 +336,11 @@ def create_claude_prompt(search_type, search_value, doctors_df, nurses_df):
 
 # Function to call Claude API
 def query_claude(prompt, api_key):
-    client = anthropic.Anthropic(api_key=api_key)
-    
     try:
+        # Initialize the Anthropic client with explicit API key
+        client = anthropic.Anthropic(api_key=api_key)
+        
+        # Create a message using the client
         message = client.messages.create(
             model="claude-3-5-sonnet-20240620",
             max_tokens=4000,
@@ -348,8 +350,12 @@ def query_claude(prompt, api_key):
                 {"role": "user", "content": prompt}
             ]
         )
+        
+        # Extract and return the text content
         return message.content[0].text
     except Exception as e:
+        # Log the specific error for debugging
+        st.error(f"Claude API error: {str(e)}")
         return json.dumps({"error": str(e)})
 
 # Main application content
