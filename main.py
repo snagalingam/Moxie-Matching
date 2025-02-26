@@ -483,7 +483,7 @@ else:
     with col2:
         st.metric("Nurses (RN/NP)", len(nurses_df))
     with col3:
-        st.markdown("**Powered by:** Claude AI")
+        st.markdown("**Powered by:** ChatGPT AI")
     
     # Get Claude API key from environment variable
     claude_api_key = os.getenv("ANTHROPIC_API_KEY", "")
@@ -693,7 +693,7 @@ else:
                             st.text(response)
     
     # Explanation of how it works
-    with st.expander("How the Claude AI Matching System Works"):
+    with st.expander("How the ChatGPT AI Matching System Works"):
         st.markdown("""
         This matching system uses Claude AI, Anthropic's advanced AI assistant, to intelligently match medical directors with nurses based on multiple factors:
         
