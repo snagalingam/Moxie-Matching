@@ -587,48 +587,16 @@ else:
                             st.markdown(f"<h3>Top Matches for {selected_doctor}</h3>", unsafe_allow_html=True)
                             
                             for match in matches.get("matches", []):
-                                st.markdown(f"""
-                                <div class="match-card">
+                                st.markdown(
+                                    f"""<div class="match-card">
                                     <h4>{match['name']} <span style="float:right; background-color:#4CAF50; color:white; padding:5px 10px; border-radius:15px;">Match Score: {match['match_score']}/10</span></h4>
                                     <p><strong>Contact:</strong> {match['email']}</p>
                                     <div class="match-reason">
                                         <p><strong>Why this match works:</strong> {match['reasoning']}</p>
                                     </div>
-                                </div>
-                                """, unsafe_allow_html=True)
-                        except json.JSONDecodeError:
-                            st.error("Error parsing response. Please try again.")
-                            st.text(response)
-    
-    # Explanation of how it works
-    with st.expander("How the Claude AI Matching System Works"):
-        st.markdown("""
-        This matching system uses Claude AI, Anthropic's advanced AI assistant, to intelligently match medical directors with nurses based on multiple factors:
-        
-        1. **Location Matching**: Claude prioritizes professionals in the same state to ensure licensing compatibility.
-        
-        2. **Experience Level Compatibility**: Claude considers the experience levels of both professionals, often matching experienced doctors with newer nurses who need mentorship.
-        
-        3. **Service Alignment**: Claude analyzes the services provided by nurses and looks for doctors with relevant expertise.
-        
-        4. **Notes Analysis**: Claude reviews additional notes for special requirements or preferences that might impact matching.
-        
-        5. **Match Score**: Claude provides a score out of 10 with detailed reasoning to explain why each match works well.
-        
-        The system intelligently processes information from your CSV files to find the most compatible professional pairings based on context and details that might not be captured by a simple algorithm.
-        
-        **Technical Performance Features**:
-        
-        - Results are cached to improve performance and reduce API usage
-        - System automatically switches to a faster AI model during high demand periods
-        - Smart filtering analyzes professional requirements and prioritizes the best matches
-        """)
-                                    <p><strong>Contact:</strong> {match['email']}</p>
-                                    <div class="match-reason">
-                                        <p><strong>Why this match works:</strong> {match['reasoning']}</p>
-                                    </div>
-                                </div>
-                                """, unsafe_allow_html=True)
+                                    </div>""",
+                                    unsafe_allow_html=True
+                                )
                         except json.JSONDecodeError:
                             st.error("Error parsing response. Please try again.")
                             st.text(response)
@@ -682,15 +650,16 @@ else:
                             st.markdown(f"<h3>Top Matches for {selected_nurse}</h3>", unsafe_allow_html=True)
                             
                             for match in matches.get("matches", []):
-                                st.markdown(f"""
-                                <div class="match-card">
+                                st.markdown(
+                                    f"""<div class="match-card">
                                     <h4>{match['name']} <span style="float:right; background-color:#4CAF50; color:white; padding:5px 10px; border-radius:15px;">Match Score: {match['match_score']}/10</span></h4>
                                     <p><strong>Contact:</strong> {match['email']}</p>
                                     <div class="match-reason">
                                         <p><strong>Why this match works:</strong> {match['reasoning']}</p>
                                     </div>
-                                </div>
-                                """, unsafe_allow_html=True)
+                                    </div>""",
+                                    unsafe_allow_html=True
+                                )
                         except json.JSONDecodeError:
                             st.error("Error parsing response. Please try again.")
                             st.text(response)
@@ -755,6 +724,40 @@ else:
                             st.markdown(f"<h3>Top Matches for this {person_type.capitalize()}</h3>", unsafe_allow_html=True)
                             
                             for match in matches.get("matches", []):
-                                st.markdown(f"""
-                                <div class="match-card">
+                                st.markdown(
+                                    f"""<div class="match-card">
                                     <h4>{match['name']} <span style="float:right; background-color:#4CAF50; color:white; padding:5px 10px; border-radius:15px;">Match Score: {match['match_score']}/10</span></h4>
+                                    <p><strong>Contact:</strong> {match['email']}</p>
+                                    <div class="match-reason">
+                                        <p><strong>Why this match works:</strong> {match['reasoning']}</p>
+                                    </div>
+                                    </div>""",
+                                    unsafe_allow_html=True
+                                )
+                        except json.JSONDecodeError:
+                            st.error("Error parsing response. Please try again.")
+                            st.text(response)
+    
+    # Explanation of how it works
+    with st.expander("How the Claude AI Matching System Works"):
+        st.markdown("""
+        This matching system uses Claude AI, Anthropic's advanced AI assistant, to intelligently match medical directors with nurses based on multiple factors:
+        
+        1. **Location Matching**: Claude prioritizes professionals in the same state to ensure licensing compatibility.
+        
+        2. **Experience Level Compatibility**: Claude considers the experience levels of both professionals, often matching experienced doctors with newer nurses who need mentorship.
+        
+        3. **Service Alignment**: Claude analyzes the services provided by nurses and looks for doctors with relevant expertise.
+        
+        4. **Notes Analysis**: Claude reviews additional notes for special requirements or preferences that might impact matching.
+        
+        5. **Match Score**: Claude provides a score out of 10 with detailed reasoning to explain why each match works well.
+        
+        The system intelligently processes information from your CSV files to find the most compatible professional pairings based on context and details that might not be captured by a simple algorithm.
+        
+        **Technical Performance Features**:
+        
+        - Results are cached to improve performance and reduce API usage
+        - System automatically switches to a faster AI model during high demand periods
+        - Smart filtering analyzes professional requirements and prioritizes the best matches
+        """)
