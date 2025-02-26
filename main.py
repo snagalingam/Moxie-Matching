@@ -83,8 +83,8 @@ if not st.session_state['password_correct']:
     password = st.text_input("Password", type="password", key="password_input")
     
     if st.button("Login"):
-        # Check password (MoxieAI2025)
-        if hashlib.sha256(password.encode()).hexdigest() == "97ae99ac51b1d9a28affe80d1ec94ca5d1d8e67e2767dde23af9df17cb52c9c2":
+        # Hard-code the password check for simplicity
+        if password == "MoxieAI2025":
             st.session_state['password_correct'] = True
             st.experimental_rerun()
         else:
