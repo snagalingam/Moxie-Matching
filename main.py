@@ -233,21 +233,23 @@ def create_claude_prompt(search_type, search_value, doctors_df, nurses_df):
         if nurse_row.empty:
             return None, "Nurse not found in database."
         
-        nurse = nurse_row.iloc[0]
+        nurse_name = nurse['Ticket Number Counter'] if pd.notna(nurse['Ticket Number Counter']) else "Unknown"
         
         # Create a prompt for finding matching doctors
         prompt = f"""
         You are an Operations Manager at Moxie tasked with matching nurses with medical directors.
         
         Nurse Information:
-        - Name: {nurse['Ticket Number Counter']}
+        - Name: {nurse_name}
         - Email: {nurse['Bird Eats Bug Email'] if pd.notna(nurse['Bird Eats Bug Email']) else 'Not provided'}
         - License Type: {nurse['Provider License Type']}
         - Experience Level: {nurse['Experience Level  '] if pd.notna(nurse['Experience Level  ']) else 'Not specified'}
         - State: {nurse['State (MedSpa Premise)'] if pd.notna(nurse['State (MedSpa Premise)']) else 'Not specified'}
         - Services: {nurse['Services Provided'] if pd.notna(nurse['Services Provided']) else 'Not specified'}
         - Additional Notes: {nurse['Addt\'l Service Notes'] if pd.notna(nurse['Addt\'l Service Notes']) else 'None'}
+        """
         
+        prompt += """
         Using the nurse information above, analyze the following medical directors and identify the top 3 best matches based on:
         1. Location match (highest priority - same state is ideal)
         2. Experience level compatibility (experienced doctors can mentor newer nurses)
