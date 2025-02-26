@@ -4,6 +4,7 @@ import os
 import json
 import anthropic
 import hashlib
+import time
 
 # Page config
 st.set_page_config(page_title="Moxie MD-Nurse Matching", layout="wide")
@@ -449,26 +450,59 @@ def create_claude_prompt(search_type, search_value, doctors_df, nurses_df, filte
         
         return prompt, None
 
-# Function to call Claude API
-def query_claude(prompt, api_key):
-    try:
-        # Initialize the client without extra parameters
-        client = anthropic.Anthropic(api_key=api_key)
-        
-        message = client.messages.create(
-            model="claude-3-5-sonnet-20240620",
-            max_tokens=4000,
-            temperature=0.2,
-            system="You are a medical staffing expert at Moxie. You help match medical directors with nurses based on their location, experience, services offered, and other relevant factors. You always respond in JSON format as specified in the prompts.",
-            messages=[
-                {"role": "user", "content": prompt}
-            ]
-        )
-        return message.content[0].text
-    except Exception as e:
-        # Log error and return as JSON
-        st.error(f"API error: {str(e)}")
-        return json.dumps({"error": f"API error: {str(e)}"})
+# Create a hash from the prompt for caching
+def get_prompt_hash(prompt):
+    return hashlib.md5(prompt.encode()).hexdigest()
+
+# Cache the Claude API responses
+@st.cache_data(ttl=3600)  # Cache for 1 hour
+def cached_claude_api(prompt_hash, prompt, api_key):
+    return query_claude(prompt, api_key)
+
+# Function to call Claude API with fallback to Haiku model
+def query_claude(prompt, api_key, max_retries=2):
+    # First try with the primary model (Sonnet)
+    primary_model = "claude-3-5-sonnet-20240620"
+    fallback_model = "claude-3-haiku-20240307"
+    
+    for attempt in range(max_retries):
+        try:
+            # Choose model based on the attempt number
+            current_model = primary_model if attempt == 0 else fallback_model
+            
+            # Initialize the client
+            client = anthropic.Anthropic(api_key=api_key)
+            
+            # Make the API request
+            message = client.messages.create(
+                model=current_model,
+                max_tokens=4000,
+                temperature=0.2,
+                system="You are a medical staffing expert at Moxie. You help match medical directors with nurses based on their location, experience, services offered, and other relevant factors. You always respond in JSON format as specified in the prompts.",
+                messages=[
+                    {"role": "user", "content": prompt}
+                ]
+            )
+            return message.content[0].text
+            
+        except Exception as e:
+            error_str = str(e)
+            
+            # If this was the primary model and we got an overloaded error
+            if attempt == 0 and "overloaded_error" in error_str:
+                st.warning(f"Primary AI model is busy. Trying with a faster model...")
+                time.sleep(1)  # Brief pause before retrying
+                continue
+                
+            # If this was the fallback model or another error
+            elif attempt == max_retries - 1:
+                st.error(f"API error: {error_str}")
+                return json.dumps({"error": f"API error: {error_str}"})
+                
+            # If this was the primary model but not an overloaded error
+            else:
+                st.error(f"API error: {error_str}")
+                return json.dumps({"error": f"API error: {error_str}"})
 
 # Main application content
 doctors_df, nurses_df = load_data()
@@ -483,7 +517,7 @@ else:
     with col2:
         st.metric("Nurses (RN/NP)", len(nurses_df))
     with col3:
-        st.markdown("**Powered by:** ChatGPT AI")
+        st.markdown("**Powered by:** Claude AI")
     
     # Get Claude API key from environment variable
     claude_api_key = os.getenv("ANTHROPIC_API_KEY", "")
@@ -540,8 +574,11 @@ else:
                     if error:
                         st.error(error)
                     else:
-                        # Call Claude API
-                        response = query_claude(prompt, claude_api_key)
+                        # Create a hash for caching
+                        prompt_hash = get_prompt_hash(prompt)
+                        
+                        # Call Claude API with caching
+                        response = cached_claude_api(prompt_hash, prompt, claude_api_key)
                         
                         try:
                             matches = json.loads(response)
@@ -553,6 +590,39 @@ else:
                                 st.markdown(f"""
                                 <div class="match-card">
                                     <h4>{match['name']} <span style="float:right; background-color:#4CAF50; color:white; padding:5px 10px; border-radius:15px;">Match Score: {match['match_score']}/10</span></h4>
+                                    <p><strong>Contact:</strong> {match['email']}</p>
+                                    <div class="match-reason">
+                                        <p><strong>Why this match works:</strong> {match['reasoning']}</p>
+                                    </div>
+                                </div>
+                                """, unsafe_allow_html=True)
+                        except json.JSONDecodeError:
+                            st.error("Error parsing response. Please try again.")
+                            st.text(response)
+    
+    # Explanation of how it works
+    with st.expander("How the Claude AI Matching System Works"):
+        st.markdown("""
+        This matching system uses Claude AI, Anthropic's advanced AI assistant, to intelligently match medical directors with nurses based on multiple factors:
+        
+        1. **Location Matching**: Claude prioritizes professionals in the same state to ensure licensing compatibility.
+        
+        2. **Experience Level Compatibility**: Claude considers the experience levels of both professionals, often matching experienced doctors with newer nurses who need mentorship.
+        
+        3. **Service Alignment**: Claude analyzes the services provided by nurses and looks for doctors with relevant expertise.
+        
+        4. **Notes Analysis**: Claude reviews additional notes for special requirements or preferences that might impact matching.
+        
+        5. **Match Score**: Claude provides a score out of 10 with detailed reasoning to explain why each match works well.
+        
+        The system intelligently processes information from your CSV files to find the most compatible professional pairings based on context and details that might not be captured by a simple algorithm.
+        
+        **Technical Performance Features**:
+        
+        - Results are cached to improve performance and reduce API usage
+        - System automatically switches to a faster AI model during high demand periods
+        - Smart filtering analyzes professional requirements and prioritizes the best matches
+        """)
                                     <p><strong>Contact:</strong> {match['email']}</p>
                                     <div class="match-reason">
                                         <p><strong>Why this match works:</strong> {match['reasoning']}</p>
@@ -599,8 +669,11 @@ else:
                     if error:
                         st.error(error)
                     else:
-                        # Call Claude API
-                        response = query_claude(prompt, claude_api_key)
+                        # Create a hash for caching
+                        prompt_hash = get_prompt_hash(prompt)
+                        
+                        # Call Claude API with caching
+                        response = cached_claude_api(prompt_hash, prompt, claude_api_key)
                         
                         try:
                             matches = json.loads(response)
@@ -668,8 +741,11 @@ else:
                     if error:
                         st.error(error)
                     else:
-                        # Call Claude API
-                        response = query_claude(prompt, claude_api_key)
+                        # Create a hash for caching
+                        prompt_hash = get_prompt_hash(prompt)
+                        
+                        # Call Claude API with caching
+                        response = cached_claude_api(prompt_hash, prompt, claude_api_key)
                         
                         try:
                             matches = json.loads(response)
@@ -682,30 +758,3 @@ else:
                                 st.markdown(f"""
                                 <div class="match-card">
                                     <h4>{match['name']} <span style="float:right; background-color:#4CAF50; color:white; padding:5px 10px; border-radius:15px;">Match Score: {match['match_score']}/10</span></h4>
-                                    <p><strong>Contact:</strong> {match['email']}</p>
-                                    <div class="match-reason">
-                                        <p><strong>Why this match works:</strong> {match['reasoning']}</p>
-                                    </div>
-                                </div>
-                                """, unsafe_allow_html=True)
-                        except json.JSONDecodeError:
-                            st.error("Error parsing response. Please try again.")
-                            st.text(response)
-    
-    # Explanation of how it works
-    with st.expander("How the ChatGPT AI Matching System Works"):
-        st.markdown("""
-        This matching system uses Claude AI, Anthropic's advanced AI assistant, to intelligently match medical directors with nurses based on multiple factors:
-        
-        1. **Location Matching**: Claude prioritizes professionals in the same state to ensure licensing compatibility.
-        
-        2. **Experience Level Compatibility**: Claude considers the experience levels of both professionals, often matching experienced doctors with newer nurses who need mentorship.
-        
-        3. **Service Alignment**: Claude analyzes the services provided by nurses and looks for doctors with relevant expertise.
-        
-        4. **Notes Analysis**: Claude reviews additional notes for special requirements or preferences that might impact matching.
-        
-        5. **Match Score**: Claude provides a score out of 10 with detailed reasoning to explain why each match works well.
-        
-        The system intelligently processes information from your CSV files to find the most compatible professional pairings based on context and details that might not be captured by a simple algorithm.
-        """)
