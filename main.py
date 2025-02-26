@@ -3,66 +3,12 @@ import pandas as pd
 import os
 import json
 import anthropic
-import time
 import hashlib
 
-# Setup page configuration
+# Page config
 st.set_page_config(page_title="Moxie MD-Nurse Matching", layout="wide")
 
-# Password protection function
-def check_password():
-    """Returns `True` if the user had the correct password."""
-
-    def password_entered():
-        """Checks whether a password entered by the user is correct."""
-        if hashlib.sha256(st.session_state["password"].encode()).hexdigest() == "97ae99ac51b1d9a28affe80d1ec94ca5d1d8e67e2767dde23af9df17cb52c9c2":
-            st.session_state["password_correct"] = True
-            del st.session_state["password"]  # Don't store the password
-        else:
-            st.session_state["password_correct"] = False
-
-    # Return True if the password is validated
-    if st.session_state.get("password_correct", False):
-        return True
-
-    # Show input for password
-    st.markdown("""
-    <style>
-        .password-container {
-            max-width: 400px;
-            margin: 100px auto;
-            padding: 20px;
-            border-radius: 10px;
-            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-            background-color: white;
-            text-align: center;
-        }
-        .password-header {
-            margin-bottom: 20px;
-            color: #2c3e50;
-        }
-        .password-logo {
-            max-width: 150px;
-            margin-bottom: 20px;
-        }
-    </style>
-    <div class="password-container">
-        <h2 class="password-header">Moxie MD-Nurse Matching System</h2>
-        <p>Please enter the password to access the system:</p>
-    </div>
-    """, unsafe_allow_html=True)
-    
-    st.text_input(
-        "Password", type="password", on_change=password_entered, key="password"
-    )
-    
-    if "password_correct" in st.session_state:
-        if not st.session_state["password_correct"]:
-            st.error("😕 Incorrect password. Please try again.")
-        
-    return False
-
-# Custom CSS for better styling
+# Custom CSS
 st.markdown("""
 <style>
     .match-card {
@@ -105,12 +51,50 @@ st.markdown("""
         border-radius: 5px;
         margin-bottom: 20px;
     }
+    .password-container {
+        max-width: 400px;
+        margin: 100px auto;
+        padding: 20px;
+        border-radius: 10px;
+        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        background-color: white;
+        text-align: center;
+    }
+    .password-header {
+        margin-bottom: 20px;
+        color: #2c3e50;
+    }
 </style>
 """, unsafe_allow_html=True)
 
-# Check password first before showing any content
-if check_password():
-    st.markdown("<h1 class='main-header'>Moxie MD-Nurse Matching System</h1>", unsafe_allow_html=True)
+# Initialize session state for password
+if 'password_correct' not in st.session_state:
+    st.session_state['password_correct'] = False
+
+# Simple password screen
+if not st.session_state['password_correct']:
+    st.markdown("""
+    <div class="password-container">
+        <h2 class="password-header">Moxie MD-Nurse Matching System</h2>
+        <p>Please enter the password to access the system:</p>
+    </div>
+    """, unsafe_allow_html=True)
+    
+    password = st.text_input("Password", type="password", key="password_input")
+    
+    if st.button("Login"):
+        # Check password (MoxieAI2025)
+        if hashlib.sha256(password.encode()).hexdigest() == "97ae99ac51b1d9a28affe80d1ec94ca5d1d8e67e2767dde23af9df17cb52c9c2":
+            st.session_state['password_correct'] = True
+            st.experimental_rerun()
+        else:
+            st.error("Incorrect password. Please try again.")
+    
+    # Stop execution here if password is incorrect
+    st.stop()
+
+# Main application (only runs if password is correct)
+st.markdown("<h1 class='main-header'>Moxie MD-Nurse Matching System</h1>", unsafe_allow_html=True)
 
 # Load data
 @st.cache_data
@@ -133,7 +117,7 @@ def load_data():
         st.error(f"Error loading data: {e}")
         return None, None
 
-# Function to create a Claude prompt for matching
+# Function to create a matching prompt
 def create_claude_prompt(search_type, search_value, doctors_df, nurses_df):
     if search_type == "md":
         # Find the doctor in the dataframe
@@ -149,7 +133,7 @@ def create_claude_prompt(search_type, search_value, doctors_df, nurses_df):
         
         doctor = doctor_row.iloc[0]
         
-        # Create a prompt for finding matching nurses
+        # Create base prompt
         prompt = f"""
         You are an Operations Manager at Moxie tasked with matching medical directors with nurses.
         
@@ -174,28 +158,23 @@ def create_claude_prompt(search_type, search_value, doctors_df, nurses_df):
         Available Nurses:
         """
         
-        # Add top 20 nurses to the prompt to avoid making it too long
-        # Prioritize same state nurses
+        # Add nurse candidates
         same_state_nurses = nurses_df[nurses_df['State (MedSpa Premise)'] == doctor['Residing State  (Lives In)']]
         other_nurses = nurses_df[nurses_df['State (MedSpa Premise)'] != doctor['Residing State  (Lives In)']]
-        
         selected_nurses = pd.concat([same_state_nurses.head(10), other_nurses.head(10)])
         
         for _, nurse in selected_nurses.iterrows():
-            nurse_name = nurse['Ticket Number Counter'] if pd.notna(nurse['Ticket Number Counter']) else "Unknown"
-            nurse_state = nurse['State (MedSpa Premise)'] if pd.notna(nurse['State (MedSpa Premise)']) else "Unknown"
-            nurse_license = nurse['Provider License Type'] if pd.notna(nurse['Provider License Type']) else "Unknown"
-            nurse_experience = nurse['Experience Level  '] if pd.notna(nurse['Experience Level  ']) else "Unknown"
-            nurse_services = nurse['Services Provided'] if pd.notna(nurse['Services Provided']) else "None specified"
-            nurse_email = nurse['Bird Eats Bug Email'] if pd.notna(nurse['Bird Eats Bug Email']) else "No email"
+            # Safe extraction of fields
+            nurse_name = str(nurse['Ticket Number Counter']) if pd.notna(nurse['Ticket Number Counter']) else "Unknown"
+            nurse_email = str(nurse['Bird Eats Bug Email']) if pd.notna(nurse['Bird Eats Bug Email']) else "No email"
+            nurse_license = str(nurse['Provider License Type']) if pd.notna(nurse['Provider License Type']) else "Unknown"
+            nurse_experience = str(nurse['Experience Level  ']) if pd.notna(nurse['Experience Level  ']) else "Unknown"
+            nurse_state = str(nurse['State (MedSpa Premise)']) if pd.notna(nurse['State (MedSpa Premise)']) else "Unknown"
+            nurse_services = str(nurse['Services Provided']) if pd.notna(nurse['Services Provided']) else "None specified"
+            nurse_notes = str(nurse['Addt\'l Service Notes']) if pd.notna(nurse['Addt\'l Service Notes']) else "None"
             
-            # Handle the problematic field separately
-            if pd.notna(nurse['Addt\'l Service Notes']):
-                nurse_notes = str(nurse['Addt\'l Service Notes'])
-            else:
-                nurse_notes = "None"
-            
-            nurse_info = f"""
+            # Append to prompt without using f-string for the notes field
+            prompt += f"""
             Nurse:
             - Name: {nurse_name}
             - Email: {nurse_email}
@@ -203,11 +182,10 @@ def create_claude_prompt(search_type, search_value, doctors_df, nurses_df):
             - Experience: {nurse_experience}
             - State: {nurse_state}
             - Services: {nurse_services}
-            - Notes: {nurse_notes}
-            
-            """
-            prompt += nurse_info
+            - Notes: """
+            prompt += nurse_notes + "\n\n"
         
+        # Add response format instructions
         prompt += """
         Format your response as JSON with the following structure:
         {
@@ -228,7 +206,7 @@ def create_claude_prompt(search_type, search_value, doctors_df, nurses_df):
         return prompt, None
     
     elif search_type == "nurse":
-        # Find nurses that match the search value
+        # Find the nurse
         nurse_row = nurses_df[
             nurses_df.apply(
                 lambda row: pd.notna(row['Ticket Number Counter']) and search_value.lower() in str(row['Ticket Number Counter']).lower(),
@@ -240,47 +218,31 @@ def create_claude_prompt(search_type, search_value, doctors_df, nurses_df):
             return None, "Nurse not found in database."
         
         nurse = nurse_row.iloc[0]
-        nurse_name = nurse['Ticket Number Counter'] if pd.notna(nurse['Ticket Number Counter']) else "Unknown"
         
-        # Handle fields that might contain problematic characters
-        if pd.notna(nurse['Bird Eats Bug Email']):
-            nurse_email = str(nurse['Bird Eats Bug Email'])
-        else:
-            nurse_email = 'Not provided'
-            
-        if pd.notna(nurse['Experience Level  ']):
-            nurse_experience = str(nurse['Experience Level  '])
-        else:
-            nurse_experience = 'Not specified'
-            
-        if pd.notna(nurse['State (MedSpa Premise)']):
-            nurse_state = str(nurse['State (MedSpa Premise)'])
-        else:
-            nurse_state = 'Not specified'
-            
-        if pd.notna(nurse['Services Provided']):
-            nurse_services = str(nurse['Services Provided'])
-        else:
-            nurse_services = 'Not specified'
-            
-        if pd.notna(nurse['Addt\'l Service Notes']):
-            nurse_notes = str(nurse['Addt\'l Service Notes'])
-        else:
-            nurse_notes = 'None'
+        # Safe extraction of fields
+        nurse_name = str(nurse['Ticket Number Counter']) if pd.notna(nurse['Ticket Number Counter']) else "Unknown"
+        nurse_email = str(nurse['Bird Eats Bug Email']) if pd.notna(nurse['Bird Eats Bug Email']) else "No email"
+        nurse_license = str(nurse['Provider License Type']) if pd.notna(nurse['Provider License Type']) else "Unknown"
+        nurse_experience = str(nurse['Experience Level  ']) if pd.notna(nurse['Experience Level  ']) else "Unknown"
+        nurse_state = str(nurse['State (MedSpa Premise)']) if pd.notna(nurse['State (MedSpa Premise)']) else "Unknown"
+        nurse_services = str(nurse['Services Provided']) if pd.notna(nurse['Services Provided']) else "None specified"
+        nurse_notes = str(nurse['Addt\'l Service Notes']) if pd.notna(nurse['Addt\'l Service Notes']) else "None"
         
-        # Create a prompt for finding matching doctors
-        prompt = f"""
+        # Create base prompt
+        prompt = """
         You are an Operations Manager at Moxie tasked with matching nurses with medical directors.
         
         Nurse Information:
+        """
+        prompt += f"""
         - Name: {nurse_name}
         - Email: {nurse_email}
-        - License Type: {nurse['Provider License Type']}
+        - License Type: {nurse_license}
         - Experience Level: {nurse_experience}
         - State: {nurse_state}
         - Services: {nurse_services}
-        - Additional Notes: {nurse_notes}
-        """
+        - Additional Notes: """
+        prompt += nurse_notes + "\n\n"
         
         prompt += """
         Using the nurse information above, analyze the following medical directors and identify the top 3 best matches based on:
@@ -298,14 +260,10 @@ def create_claude_prompt(search_type, search_value, doctors_df, nurses_df):
         Available Medical Directors:
         """
         
-        # Add top 20 doctors to the prompt to avoid making it too long
-        # Prioritize same state doctors
-        nurse_state = nurse['State (MedSpa Premise)'] if pd.notna(nurse['State (MedSpa Premise)']) else None
-        
-        if nurse_state:
+        # Add doctor candidates
+        if nurse_state != "Unknown":
             same_state_doctors = doctors_df[doctors_df['Residing State  (Lives In)'].str.contains(nurse_state, na=False)]
             other_doctors = doctors_df[~doctors_df['Residing State  (Lives In)'].str.contains(nurse_state, na=False)]
-            
             selected_doctors = pd.concat([same_state_doctors.head(10), other_doctors.head(10)])
         else:
             selected_doctors = doctors_df.head(20)
@@ -321,6 +279,7 @@ def create_claude_prompt(search_type, search_value, doctors_df, nurses_df):
             """
             prompt += doctor_info
         
+        # Add response format instructions
         prompt += """
         Format your response as JSON with the following structure:
         {
@@ -393,187 +352,186 @@ def query_claude(prompt, api_key):
     except Exception as e:
         return json.dumps({"error": str(e)})
 
-# Main app
-if check_password():  # Only run this part if password is correct
-    doctors_df, nurses_df = load_data()
+# Main application content
+doctors_df, nurses_df = load_data()
 
-    if doctors_df is None or nurses_df is None:
-        st.error("Failed to load data. Please check the data files.")
+if doctors_df is None or nurses_df is None:
+    st.error("Failed to load data. Please check the data files.")
+else:
+    # Display stats
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        st.metric("Medical Directors", len(doctors_df))
+    with col2:
+        st.metric("Nurses (RN/NP)", len(nurses_df))
+    with col3:
+        st.markdown("**Powered by:** ChatGPT")
+    
+    # Get Claude API key from environment variable
+    claude_api_key = os.getenv("ANTHROPIC_API_KEY", "")
+    
+    # Show API key status
+    if claude_api_key:
+        st.success("API key is configured and ready to use")
     else:
-        # Display some stats
-        col1, col2, col3 = st.columns(3)
-        with col1:
-            st.metric("Medical Directors", len(doctors_df))
-        with col2:
-            st.metric("Nurses (RN/NP)", len(nurses_df))
-        with col3:
-            st.markdown("**Powered by:** ChatGPT")
+        st.error("API key is not configured. Please set the ANTHROPIC_API_KEY environment variable")
+    
+    # Search options
+    st.markdown("<h2 class='subheader'>Find Matches</h2>", unsafe_allow_html=True)
+    
+    search_type = st.radio(
+        "Search by:",
+        ("Medical Director", "Nurse", "Manual Entry"),
+        horizontal=True
+    )
+    
+    # Convert the search type to a simpler format
+    search_type_key = {
+        "Medical Director": "md",
+        "Nurse": "nurse",
+        "Manual Entry": "manual"
+    }[search_type]
+    
+    if search_type_key == "md":
+        # Get a list of all doctors for the dropdown
+        doctor_names = [f"{row['First Name']} {row['Last Name']}" for _, row in doctors_df.iterrows()]
+        selected_doctor = st.selectbox("Select Medical Director:", [""] + doctor_names)
         
-        # Get Claude API key from environment variable
-        claude_api_key = os.getenv("ANTHROPIC_API_KEY", "")
-        
-        # Show API key status
-        if claude_api_key:
-            st.success("ANTHROPIC_API_KEY is configured and ready to use")
-        else:
-            st.error("ANTHROPIC_API_KEY is not configured. Please set it in your environment variables")
-        
-        # Search options
-        st.markdown("<h2 class='subheader'>Find Matches</h2>", unsafe_allow_html=True)
-        
-        search_type = st.radio(
-            "Search by:",
-            ("Medical Director", "Nurse", "Manual Entry"),
-            horizontal=True
-        )
-        
-        # Convert the search type to a simpler format for our functions
-        search_type_key = {
-            "Medical Director": "md",
-            "Nurse": "nurse",
-            "Manual Entry": "manual"
-        }[search_type]
-        
-        if search_type_key == "md":
-            # Get a list of all doctors for the dropdown
-            doctor_names = [f"{row['First Name']} {row['Last Name']}" for _, row in doctors_df.iterrows()]
-            selected_doctor = st.selectbox("Select Medical Director:", [""] + doctor_names)
-            
-            if selected_doctor and st.button("Find Matching Nurses"):
-                if not claude_api_key:
-                    st.error("Claude API key is not configured. Please set the ANTHROPIC_API_KEY environment variable.")
-                else:
-                    with st.spinner("Analyzing and finding the best nurse matches..."):
-                        prompt, error = create_claude_prompt(search_type_key, selected_doctor, doctors_df, nurses_df)
+        if selected_doctor and st.button("Find Matching Nurses"):
+            if not claude_api_key:
+                st.error("API key is not configured. Please set the ANTHROPIC_API_KEY environment variable.")
+            else:
+                with st.spinner("Analyzing and finding the best nurse matches..."):
+                    prompt, error = create_claude_prompt(search_type_key, selected_doctor, doctors_df, nurses_df)
+                    
+                    if error:
+                        st.error(error)
+                    else:
+                        # Call Claude API
+                        response = query_claude(prompt, claude_api_key)
                         
-                        if error:
-                            st.error(error)
-                        else:
-                            # Call Claude API
-                            response = query_claude(prompt, claude_api_key)
+                        try:
+                            matches = json.loads(response)
                             
-                            try:
-                                matches = json.loads(response)
-                                
-                                # Display matches
-                                st.markdown(f"<h3>Top Matches for {selected_doctor}</h3>", unsafe_allow_html=True)
-                                
-                                for match in matches.get("matches", []):
-                                    st.markdown(f"""
-                                    <div class="match-card">
-                                        <h4>{match['name']} <span style="float:right; background-color:#4CAF50; color:white; padding:5px 10px; border-radius:15px;">Match Score: {match['match_score']}/10</span></h4>
-                                        <p><strong>Contact:</strong> {match['email']}</p>
-                                        <div class="match-reason">
-                                            <p><strong>Why this match works:</strong> {match['reasoning']}</p>
-                                        </div>
+                            # Display matches
+                            st.markdown(f"<h3>Top Matches for {selected_doctor}</h3>", unsafe_allow_html=True)
+                            
+                            for match in matches.get("matches", []):
+                                st.markdown(f"""
+                                <div class="match-card">
+                                    <h4>{match['name']} <span style="float:right; background-color:#4CAF50; color:white; padding:5px 10px; border-radius:15px;">Match Score: {match['match_score']}/10</span></h4>
+                                    <p><strong>Contact:</strong> {match['email']}</p>
+                                    <div class="match-reason">
+                                        <p><strong>Why this match works:</strong> {match['reasoning']}</p>
                                     </div>
-                                    """, unsafe_allow_html=True)
-                            except json.JSONDecodeError:
-                                st.error("Error parsing Claude's response. Please try again.")
-                                st.text(response)
+                                </div>
+                                """, unsafe_allow_html=True)
+                        except json.JSONDecodeError:
+                            st.error("Error parsing response. Please try again.")
+                            st.text(response)
+    
+    elif search_type_key == "nurse":
+        # Get a list of all nurses for the dropdown
+        nurse_names = [str(row['Ticket Number Counter']) for _, row in nurses_df.iterrows() if pd.notna(row['Ticket Number Counter'])]
+        selected_nurse = st.selectbox("Select Nurse:", [""] + nurse_names)
         
-        elif search_type_key == "nurse":
-            # Get a list of all nurses for the dropdown
-            nurse_names = [str(row['Ticket Number Counter']) for _, row in nurses_df.iterrows() if pd.notna(row['Ticket Number Counter'])]
-            selected_nurse = st.selectbox("Select Nurse:", [""] + nurse_names)
-            
-            if selected_nurse and st.button("Find Matching Medical Directors"):
-                if not claude_api_key:
-                    st.error("Claude API key is not configured. Please set the ANTHROPIC_API_KEY environment variable.")
-                else:
-                    with st.spinner("Analyzing and finding the best medical director matches..."):
-                        prompt, error = create_claude_prompt(search_type_key, selected_nurse, doctors_df, nurses_df)
+        if selected_nurse and st.button("Find Matching Medical Directors"):
+            if not claude_api_key:
+                st.error("API key is not configured. Please set the ANTHROPIC_API_KEY environment variable.")
+            else:
+                with st.spinner("Analyzing and finding the best medical director matches..."):
+                    prompt, error = create_claude_prompt(search_type_key, selected_nurse, doctors_df, nurses_df)
+                    
+                    if error:
+                        st.error(error)
+                    else:
+                        # Call Claude API
+                        response = query_claude(prompt, claude_api_key)
                         
-                        if error:
-                            st.error(error)
-                        else:
-                            # Call Claude API
-                            response = query_claude(prompt, claude_api_key)
+                        try:
+                            matches = json.loads(response)
                             
-                            try:
-                                matches = json.loads(response)
-                                
-                                # Display matches
-                                st.markdown(f"<h3>Top Matches for {selected_nurse}</h3>", unsafe_allow_html=True)
-                                
-                                for match in matches.get("matches", []):
-                                    st.markdown(f"""
-                                    <div class="match-card">
-                                        <h4>{match['name']} <span style="float:right; background-color:#4CAF50; color:white; padding:5px 10px; border-radius:15px;">Match Score: {match['match_score']}/10</span></h4>
-                                        <p><strong>Contact:</strong> {match['email']}</p>
-                                        <div class="match-reason">
-                                            <p><strong>Why this match works:</strong> {match['reasoning']}</p>
-                                        </div>
+                            # Display matches
+                            st.markdown(f"<h3>Top Matches for {selected_nurse}</h3>", unsafe_allow_html=True)
+                            
+                            for match in matches.get("matches", []):
+                                st.markdown(f"""
+                                <div class="match-card">
+                                    <h4>{match['name']} <span style="float:right; background-color:#4CAF50; color:white; padding:5px 10px; border-radius:15px;">Match Score: {match['match_score']}/10</span></h4>
+                                    <p><strong>Contact:</strong> {match['email']}</p>
+                                    <div class="match-reason">
+                                        <p><strong>Why this match works:</strong> {match['reasoning']}</p>
                                     </div>
-                                    """, unsafe_allow_html=True)
-                            except json.JSONDecodeError:
-                                st.error("Error parsing Claude's response. Please try again.")
-                                st.text(response)
+                                </div>
+                                """, unsafe_allow_html=True)
+                        except json.JSONDecodeError:
+                            st.error("Error parsing response. Please try again.")
+                            st.text(response)
+    
+    else:  # Manual entry
+        st.markdown("""
+        <div class="explanation">
+            Enter information about the doctor or nurse you want to match. Include details like:
+            <ul>
+                <li>Name and role (MD, RN, NP)</li>
+                <li>State/location</li>
+                <li>Experience level</li>
+                <li>Services offered/interested in</li>
+                <li>Any special requirements or notes</li>
+            </ul>
+        </div>
+        """, unsafe_allow_html=True)
         
-        else:  # Manual entry
-            st.markdown("""
-            <div class="explanation">
-                Enter information about the doctor or nurse you want to match. Include details like:
-                <ul>
-                    <li>Name and role (MD, RN, NP)</li>
-                    <li>State/location</li>
-                    <li>Experience level</li>
-                    <li>Services offered/interested in</li>
-                    <li>Any special requirements or notes</li>
-                </ul>
-            </div>
-            """, unsafe_allow_html=True)
-            
-            user_input = st.text_area("Enter professional information:", height=150)
-            
-            if user_input and st.button("Find Matches"):
-                if not claude_api_key:
-                    st.error("Claude API key is not configured. Please set the ANTHROPIC_API_KEY environment variable.")
-                else:
-                    with st.spinner("Analyzing input and finding the best matches..."):
-                        prompt, error = create_claude_prompt(search_type_key, user_input, doctors_df, nurses_df)
+        user_input = st.text_area("Enter professional information:", height=150)
+        
+        if user_input and st.button("Find Matches"):
+            if not claude_api_key:
+                st.error("API key is not configured. Please set the ANTHROPIC_API_KEY environment variable.")
+            else:
+                with st.spinner("Analyzing input and finding the best matches..."):
+                    prompt, error = create_claude_prompt(search_type_key, user_input, doctors_df, nurses_df)
+                    
+                    if error:
+                        st.error(error)
+                    else:
+                        # Call Claude API
+                        response = query_claude(prompt, claude_api_key)
                         
-                        if error:
-                            st.error(error)
-                        else:
-                            # Call Claude API
-                            response = query_claude(prompt, claude_api_key)
+                        try:
+                            matches = json.loads(response)
                             
-                            try:
-                                matches = json.loads(response)
-                                
-                                # Display person type
-                                person_type = matches.get("person_type", "professional")
-                                st.markdown(f"<h3>Top Matches for this {person_type.capitalize()}</h3>", unsafe_allow_html=True)
-                                
-                                for match in matches.get("matches", []):
-                                    st.markdown(f"""
-                                    <div class="match-card">
-                                        <h4>{match['name']} <span style="float:right; background-color:#4CAF50; color:white; padding:5px 10px; border-radius:15px;">Match Score: {match['match_score']}/10</span></h4>
-                                        <p><strong>Contact:</strong> {match['email']}</p>
-                                        <div class="match-reason">
-                                            <p><strong>Why this match works:</strong> {match['reasoning']}</p>
-                                        </div>
+                            # Display person type
+                            person_type = matches.get("person_type", "professional")
+                            st.markdown(f"<h3>Top Matches for this {person_type.capitalize()}</h3>", unsafe_allow_html=True)
+                            
+                            for match in matches.get("matches", []):
+                                st.markdown(f"""
+                                <div class="match-card">
+                                    <h4>{match['name']} <span style="float:right; background-color:#4CAF50; color:white; padding:5px 10px; border-radius:15px;">Match Score: {match['match_score']}/10</span></h4>
+                                    <p><strong>Contact:</strong> {match['email']}</p>
+                                    <div class="match-reason">
+                                        <p><strong>Why this match works:</strong> {match['reasoning']}</p>
                                     </div>
-                                    """, unsafe_allow_html=True)
-                            except json.JSONDecodeError:
-                                st.error("Error parsing Claude's response. Please try again.")
-                                st.text(response)
+                                </div>
+                                """, unsafe_allow_html=True)
+                        except json.JSONDecodeError:
+                            st.error("Error parsing response. Please try again.")
+                            st.text(response)
+    
+    # Explanation of how it works
+    with st.expander("How the ChatGPT Matching System Works"):
+        st.markdown("""
+        This matching system uses ChatGPT, OpenAI's advanced AI assistant, to intelligently match medical directors with nurses based on multiple factors:
         
-        # Explanation of how it works
-        with st.expander("How the ChatGPT Matching System Works"):
-            st.markdown("""
-            This matching system uses ChatGPT, OpenAI's advanced AI assistant, to intelligently match medical directors with nurses based on multiple factors:
-            
-            1. **Location Matching**: ChatGPT prioritizes professionals in the same state to ensure licensing compatibility.
-            
-            2. **Experience Level Compatibility**: ChatGPT considers the experience levels of both professionals, often matching experienced doctors with newer nurses who need mentorship.
-            
-            3. **Service Alignment**: ChatGPT analyzes the services provided by nurses and looks for doctors with relevant expertise.
-            
-            4. **Notes Analysis**: ChatGPT reviews additional notes for special requirements or preferences that might impact matching.
-            
-            5. **Match Score**: ChatGPT provides a score out of 10 with detailed reasoning to explain why each match works well.
-            
-            The system intelligently processes information from your CSV files to find the most compatible professional pairings based on context and details that might not be captured by a simple algorithm.
-            """)
+        1. **Location Matching**: ChatGPT prioritizes professionals in the same state to ensure licensing compatibility.
+        
+        2. **Experience Level Compatibility**: ChatGPT considers the experience levels of both professionals, often matching experienced doctors with newer nurses who need mentorship.
+        
+        3. **Service Alignment**: ChatGPT analyzes the services provided by nurses and looks for doctors with relevant expertise.
+        
+        4. **Notes Analysis**: ChatGPT reviews additional notes for special requirements or preferences that might impact matching.
+        
+        5. **Match Score**: ChatGPT provides a score out of 10 with detailed reasoning to explain why each match works well.
+        
+        The system intelligently processes information from your CSV files to find the most compatible professional pairings based on context and details that might not be captured by a simple algorithm.
+        """)
