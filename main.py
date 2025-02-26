@@ -575,7 +575,7 @@ else:
     with col2:
         st.metric("Nurses (RN/NP)", len(nurses_df))
     with col3:
-        st.markdown("**Powered by:** Claude AI")
+        st.markdown("**Powered by:** ChatGPT AI")
     
     # Get Claude API key from environment variable
     claude_api_key = os.getenv("ANTHROPIC_API_KEY", "")
