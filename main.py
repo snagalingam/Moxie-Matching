@@ -209,18 +209,18 @@ def load_data():
             lambda x: x.replace('Dr. ', '') if isinstance(x, str) and x.startswith('Dr. ') else x
         )
         
-        # Process multiple states
+        # Process multiple states - convert to individual boolean checks to avoid ambiguity
         md_metadata_df['Multiple States'] = md_metadata_df['Residing State  (Lives In)'].apply(
-            lambda x: True if isinstance(x, str) and (';' in x or ',' in x) else False
+            lambda x: (isinstance(x, str) and (';' in x or ',' in x))
         )
         
         md_metadata_df['States List'] = md_metadata_df['Residing State  (Lives In)'].apply(
             lambda x: [s.strip() for s in re.split(r'[;,]', str(x))] if isinstance(x, str) else []
         )
         
-        # Flag for preferences
+        # Flag for preferences - convert to individual boolean checks
         md_metadata_df['Has Preferences'] = md_metadata_df['MD Preferences'].apply(
-            lambda x: True if isinstance(x, str) and len(x.strip()) > 0 else False
+            lambda x: (isinstance(x, str) and len(x.strip()) > 0)
         )
         
         # Split personality traits into a list for easier processing
@@ -228,9 +228,9 @@ def load_data():
             lambda x: [trait.strip() for trait in str(x).split(',')] if isinstance(x, str) else []
         )
         
-        # Identify if the row is actually a nurse practitioner
+        # Identify if the row is actually a nurse practitioner - use individual boolean checks
         md_metadata_df['Is NP'] = md_metadata_df['Last Name'].apply(
-            lambda x: True if isinstance(x, str) and 'NP' in x.upper() else False
+            lambda x: (isinstance(x, str) and 'NP' in x.upper())
         )
         
         # Create a dataframe for just the NPs
@@ -238,9 +238,6 @@ def load_data():
         
         # Remove NPs from the MD dataframe
         md_metadata_df = md_metadata_df[md_metadata_df['Is NP'] == False].copy()
-        
-        # Filter nurse providers from the metadata (these have "Np" in their name)
-        nurse_metadata = md_metadata_df[md_metadata_df['Last Name'].str.contains('Np', case=False, na=False)].copy() if len(md_metadata_df) > 0 else pd.DataFrame()
         
         # Create nurses dataframe directly from the provided data or from hubspot CSV
         try:
@@ -251,7 +248,9 @@ def load_data():
                 'Experience Level  ', 'State (MedSpa Premise)', 'Services Provided',
                 'Addt\'l Service Notes'
             ]
-            nurses_df = nurses_df[relevant_cols].dropna(subset=['Bird Eats Bug Email'])
+            # Use columns that are actually in the dataframe
+            available_cols = [col for col in relevant_cols if col in nurses_df.columns]
+            nurses_df = nurses_df[available_cols].dropna(subset=['Bird Eats Bug Email'])
         except FileNotFoundError:
             # Create a sample dataframe
             nurse_data = [
@@ -264,22 +263,7 @@ def load_data():
                 {"Name": "Shannon Asuchak", "License": "RN", "Email": "sgoritz@yahoo.com"},
                 {"Name": "Bobbi Garcia", "License": "RN", "Email": "radiancebeautyaesthetics@gmail.com"},
                 {"Name": "Ilona", "License": "RN", "Email": "regenmed8@gmail.com"},
-                {"Name": "Maribel Montes Person", "License": "RN", "Email": "maribelperson@gmail.com"},
-                {"Name": "Wendy Ferguson", "License": "RN", "Email": "wnelson810@hotmail.com"},
-                {"Name": "Daija Nolcox", "License": "RN", "Email": "Daija.nolcox@gmail.com"},
-                {"Name": "Marsha Sheakalee", "License": "RN", "Email": "marshasheakalee@aol.com"},
-                {"Name": "Saloumeh", "License": "RN", "Email": "sallyvafaei@gmail.com"},
-                {"Name": "Amir Mahrabkhani", "License": "NP", "Email": "amirmahrabi123@gmail.com"},
-                {"Name": "Ali Gludt", "License": "NP", "Email": "jillephillips@yahoo.com"},
-                {"Name": "MJ Chevalier", "License": "NP", "Email": "layannakai@gmail.com"},
-                {"Name": "Sarah Bremer", "License": "RN", "Email": "christinalackland@gmail.com"},
-                {"Name": "Ashley Pope", "License": "NP", "Email": "mmgalam@yahoo.com"},
-                {"Name": "Joyce Jaugar", "License": "RN", "Email": "info@youthfulpractice.com"},
-                {"Name": "Leslie Nichols", "License": "RN/NP", "Email": "heathermmott@gmail.com"},
-                {"Name": "Jessica Hojaij", "License": "RN", "Email": "cherylannrn@aol.com"},
-                {"Name": "Danelle Hamilton", "License": "NP", "Email": "Dhamilton876@gmail.com"},
-                {"Name": "Izza Marie Yeed", "License": "RN", "Email": "ftan08@gmail.com"},
-                {"Name": "Katherine Oganesyan", "License": "NP", "Email": "oganesyankatherine@gmail.com"}
+                {"Name": "Maribel Montes Person", "License": "RN", "Email": "maribelperson@gmail.com"}
             ]
             
             # Add nurse practitioners from the metadata if available
@@ -359,16 +343,16 @@ def load_data():
             doctors_df['Multiple States'] = doctors_df['Multiple States'].fillna(False)
             doctors_df['Has Preferences'] = doctors_df['Has Preferences'].fillna(False)
             
-            # Ensure States List is properly filled
+            # Ensure States List is properly filled - handling Series safely
             doctors_df['States List'] = doctors_df.apply(
-                lambda row: row['States List'] if pd.notna(row['States List']) else 
+                lambda row: row['States List'] if isinstance(row['States List'], list) else 
                             [row['Residing State  (Lives In)']] if pd.notna(row['Residing State  (Lives In)']) else [],
                 axis=1
             )
             
-            # Ensure Traits List is properly filled
+            # Ensure Traits List is properly filled - handling Series safely
             doctors_df['Traits List'] = doctors_df.apply(
-                lambda row: row['Traits List'] if pd.notna(row['Traits List']) else 
+                lambda row: row['Traits List'] if isinstance(row['Traits List'], list) else 
                             [trait.strip() for trait in str(row['Personality Traits']).split(',')] 
                             if pd.notna(row['Personality Traits']) else [],
                 axis=1
