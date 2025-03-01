@@ -262,25 +262,32 @@ def load_data():
             
             # Merge with nurse_info_df to incorporate more detailed information
             if not nurse_info_df.empty and 'Ticket name' in nurses_df.columns:
+                # Define column names as variables to avoid f-string escape issues
+                addt_col = 'Addt\'l Service Notes'
+                addt_col_additional = 'Addt\'l Service Notes_additional'
+                
                 # Join on Ticket name
                 nurses_df = pd.merge(
                     nurses_df,
-                    nurse_info_df[['Ticket name', 'Addt\'l Service Notes', 'Resume']],
+                    nurse_info_df[['Ticket name', addt_col, 'Resume']],
                     on='Ticket name',
                     how='left',
                     suffixes=('', '_additional')
                 )
                 
                 # Combine Addt'l Service Notes if both exist
-                if 'Addt\'l Service Notes_additional' in nurses_df.columns:
-                    nurses_df['Addt\'l Service Notes'] = nurses_df.apply(
-                        lambda row: f"{row['Addt\'l Service Notes']} {row['Addt\'l Service Notes_additional']}".strip()
-                        if pd.notna(row['Addt\'l Service Notes_additional']) else row['Addt\'l Service Notes'],
+                if addt_col_additional in nurses_df.columns:
+                    nurses_df[addt_col] = nurses_df.apply(
+                        lambda row: f"{row[addt_col]} {row[addt_col_additional]}".strip()
+                        if pd.notna(row[addt_col_additional]) else row[addt_col],
                         axis=1
                     )
-                    nurses_df = nurses_df.drop('Addt\'l Service Notes_additional', axis=1)
+                    nurses_df = nurses_df.drop(addt_col_additional, axis=1)
                 
             elif 'Ticket Number Counter' in nurses_df.columns and 'Ticket name' in nurse_info_df.columns:
+                # Define column name as variable
+                addt_col = 'Addt\'l Service Notes'
+                
                 # Try to match based on name similarity
                 for idx, nurse_row in nurses_df.iterrows():
                     if pd.isna(nurse_row['Ticket Number Counter']):
@@ -298,9 +305,9 @@ def load_data():
                         # Check if names are similar (contains each other or high similarity)
                         if nurse_name in info_name or info_name in nurse_name:
                             # Append additional notes if available
-                            if pd.notna(info_row['Addt\'l Service Notes']) and len(str(info_row['Addt\'l Service Notes']).strip()) > 0:
-                                current_notes = nurses_df.at[idx, 'Addt\'l Service Notes'] if pd.notna(nurses_df.at[idx, 'Addt\'l Service Notes']) else ""
-                                nurses_df.at[idx, 'Addt\'l Service Notes'] = f"{current_notes} {info_row['Addt\'l Service Notes']}".strip()
+                            if pd.notna(info_row[addt_col]) and len(str(info_row[addt_col]).strip()) > 0:
+                                current_notes = nurses_df.at[idx, addt_col] if pd.notna(nurses_df.at[idx, addt_col]) else ""
+                                nurses_df.at[idx, addt_col] = f"{current_notes} {info_row[addt_col]}".strip()
                             
                             # Add resume information if available
                             if pd.notna(info_row['Resume']) and 'Resume' not in nurses_df.columns:
@@ -310,6 +317,9 @@ def load_data():
                             
                             break  # Found a match, move to next nurse
         except FileNotFoundError:
+            # Define column name as variable
+            addt_col = 'Addt\'l Service Notes'
+            
             # If nurse_info_df exists but hubspot_moxie.csv doesn't, create a dataframe from nurse_info
             if not nurse_info_df.empty:
                 nurses_data = []
@@ -343,8 +353,8 @@ def load_data():
                         
                         # Extract services from additional notes if available
                         services = ""
-                        if pd.notna(row['Addt\'l Service Notes']):
-                            services = str(row['Addt\'l Service Notes'])
+                        if pd.notna(row[addt_col]):
+                            services = str(row[addt_col])
                         
                         # Generate a placeholder email if none available
                         email = f"{row['Ticket name'].replace(' ', '').lower()}@example.com"
@@ -356,7 +366,7 @@ def load_data():
                             "Experience Level  ": "Unknown",
                             "State (MedSpa Premise)": state,
                             "Services Provided": services,
-                            "Addt'l Service Notes": str(row['Addt\'l Service Notes']) if pd.notna(row['Addt\'l Service Notes']) else "",
+                            addt_col: str(row[addt_col]) if pd.notna(row[addt_col]) else "",
                             "Resume": str(row['Resume']) if pd.notna(row['Resume']) else ""
                         })
                 
@@ -410,7 +420,7 @@ def load_data():
                             "Experience Level  ": random_experience,
                             "State (MedSpa Premise)": random_state,
                             "Services Provided": "Botox, Fillers, Aesthetic services",
-                            "Addt'l Service Notes": nurse.get("Traits", f"Experienced in {random.choice(['medical aesthetics', 'cosmetic procedures', 'skincare treatments'])}")
+                            addt_col: nurse.get("Traits", f"Experienced in {random.choice(['medical aesthetics', 'cosmetic procedures', 'skincare treatments'])}")
                         })
                     
                     nurses_df = pd.DataFrame(nurses_data_formatted)
@@ -462,7 +472,7 @@ def load_data():
                         "Experience Level  ": random_experience,
                         "State (MedSpa Premise)": random_state,
                         "Services Provided": "Botox, Fillers, Aesthetic services",
-                        "Addt'l Service Notes": nurse.get("Traits", f"Experienced in {random.choice(['medical aesthetics', 'cosmetic procedures', 'skincare treatments'])}")
+                        addt_col: nurse.get("Traits", f"Experienced in {random.choice(['medical aesthetics', 'cosmetic procedures', 'skincare treatments'])}")
                     })
                 
                 nurses_df = pd.DataFrame(nurses_data_formatted)
