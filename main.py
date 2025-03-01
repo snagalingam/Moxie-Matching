@@ -886,7 +886,7 @@ def get_prompt_hash(prompt):
     return hashlib.md5(prompt.encode()).hexdigest()
 
 # Cache the Claude API responses
-@st.cache_data(ttl=3600)  # Cache for 1 hour
+#@st.cache_data(ttl=3600)  # Cache for 1 hour
 def cached_claude_api(prompt_hash, prompt, api_key):
     return query_claude(prompt, api_key)
 
