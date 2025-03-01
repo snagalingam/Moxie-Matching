@@ -810,7 +810,7 @@ def create_claude_prompt(search_type, search_value, doctors_df, nurses_df, filte
         {
             "matches": [
                 {
-                    "name": "Nurse Name",
+                    "name": "Full Nurse Name",  
                     "email": "nurse@email.com",
                     "match_score": 8.5,
                     "reasoning": "Detailed explanation of why this is a good match that specifically mentions the doctor's personality traits and how they align with the nurse's profile"
@@ -819,7 +819,7 @@ def create_claude_prompt(search_type, search_value, doctors_df, nurses_df, filte
             ]
         }
         
-        Only include the JSON in your response, nothing else.
+        Only include the JSON in your response, nothing else. Ensure the name field contains the complete name exactly as provided in the nurses information.
         """
         
         return prompt, None
@@ -1047,7 +1047,7 @@ def create_claude_prompt(search_type, search_value, doctors_df, nurses_df, filte
         {
             "matches": [
                 {
-                    "name": "Dr. Name",
+                    "name": "Dr. First Last",  
                     "email": "doctor@email.com",
                     "match_score": 8.5, 
                     "reasoning": "Detailed explanation of why this is a good match that specifically references the doctor's personality traits and how they align with the nurse's needs"
@@ -1056,7 +1056,7 @@ def create_claude_prompt(search_type, search_value, doctors_df, nurses_df, filte
             ]
         }
         
-        Only include the JSON in your response, nothing else.
+        Only include the JSON in your response, nothing else. Ensure the name field contains the complete doctor name exactly as provided in the doctor information.
         """
         
         return prompt, None
@@ -1099,7 +1099,7 @@ def create_claude_prompt(search_type, search_value, doctors_df, nurses_df, filte
             "person_type": "doctor" or "nurse",
             "matches": [
                 {
-                    "name": "Name",
+                    "name": "Full Name",  
                     "email": "email@example.com",
                     "match_score": 8.5,
                     "reasoning": "Detailed explanation of why this is a good match with specific references to personality traits and compatibility factors"
@@ -1108,7 +1108,7 @@ def create_claude_prompt(search_type, search_value, doctors_df, nurses_df, filte
             ]
         }
         
-        Only include the JSON in your response, nothing else.
+        Only include the JSON in your response, nothing else. Ensure the name field contains the complete name exactly as provided in the professional information.
         """
         
         return prompt, None
@@ -1322,15 +1322,26 @@ else:
                                 score = float(match['match_score'])
                                 score_class = "high-score" if score >= 8.0 else "medium-score" if score >= 6.0 else "low-score"
                                 
+                                # Get the name, ensuring it's not empty
+                                display_name = match.get('name', "Unknown")
+                                if not display_name or display_name.lower() == "unknown":
+                                    # Try to extract name from the reasoning text
+                                    reasoning = match.get('reasoning', '')
+                                    name_match = re.search(r'\b([A-Z][a-z]+\s+[A-Z][a-z]+)\b', reasoning)
+                                    if name_match:
+                                        display_name = name_match.group(1)
+                                    else:
+                                        display_name = "Unknown Nurse"
+                                
                                 st.markdown(
                                     f"""<div class="match-card">
                                     <div style="display: flex; justify-content: space-between; align-items: center;">
-                                        <h4>{match['name']}</h4>
+                                        <h4>{display_name}</h4>
                                         <div class="compatibility-score {score_class}">{match['match_score']}</div>
                                     </div>
-                                    <p><strong>Contact:</strong> {match['email']}</p>
+                                    <p><strong>Contact:</strong> {match.get('email', 'No email available')}</p>
                                     <div class="match-reason">
-                                        <p><strong>Why this match works:</strong> {match['reasoning']}</p>
+                                        <p><strong>Why this match works:</strong> {match.get('reasoning', 'No reasoning provided')}</p>
                                     </div>
                                     </div>""",
                                     unsafe_allow_html=True
@@ -1408,15 +1419,31 @@ else:
                                 score = float(match['match_score'])
                                 score_class = "high-score" if score >= 8.0 else "medium-score" if score >= 6.0 else "low-score"
                                 
+                                # Get the name, ensuring it's not empty
+                                display_name = match.get('name', "Unknown")
+                                if not display_name or display_name.lower() == "unknown":
+                                    # Try to extract doctor name from the reasoning text
+                                    reasoning = match.get('reasoning', '')
+                                    name_match = re.search(r'(?:Dr\.|Doctor)\s+([A-Z][a-z]+\s+[A-Z][a-z]+)', reasoning)
+                                    if name_match:
+                                        display_name = f"Dr. {name_match.group(1)}"
+                                    else:
+                                        # Try a more general name pattern
+                                        name_match = re.search(r'\b([A-Z][a-z]+\s+[A-Z][a-z]+)\b', reasoning)
+                                        if name_match:
+                                            display_name = f"Dr. {name_match.group(1)}"
+                                        else:
+                                            display_name = "Unknown Doctor"
+                                
                                 st.markdown(
                                     f"""<div class="match-card">
                                     <div style="display: flex; justify-content: space-between; align-items: center;">
-                                        <h4>{match['name']}</h4>
+                                        <h4>{display_name}</h4>
                                         <div class="compatibility-score {score_class}">{match['match_score']}</div>
                                     </div>
-                                    <p><strong>Contact:</strong> {match['email']}</p>
+                                    <p><strong>Contact:</strong> {match.get('email', 'No email available')}</p>
                                     <div class="match-reason">
-                                        <p><strong>Why this match works:</strong> {match['reasoning']}</p>
+                                        <p><strong>Why this match works:</strong> {match.get('reasoning', 'No reasoning provided')}</p>
                                     </div>
                                     </div>""",
                                     unsafe_allow_html=True
@@ -1491,15 +1518,40 @@ else:
                                 score = float(match['match_score'])
                                 score_class = "high-score" if score >= 8.0 else "medium-score" if score >= 6.0 else "low-score"
                                 
+                                # Get the name, ensuring it's not empty
+                                display_name = match.get('name', "Unknown")
+                                if not display_name or display_name.lower() == "unknown":
+                                    # Try to extract name from the reasoning text
+                                    reasoning = match.get('reasoning', '')
+                                    # Try to find a name pattern in the reasoning
+                                    if person_type.lower() == "doctor":
+                                        name_match = re.search(r'(?:Dr\.|Doctor)\s+([A-Z][a-z]+\s+[A-Z][a-z]+)', reasoning)
+                                        if name_match:
+                                            display_name = f"Dr. {name_match.group(1)}"
+                                        else:
+                                            # More general name pattern
+                                            name_match = re.search(r'\b([A-Z][a-z]+\s+[A-Z][a-z]+)\b', reasoning)
+                                            if name_match:
+                                                display_name = f"Dr. {name_match.group(1)}"
+                                            else:
+                                                display_name = "Unknown Doctor"
+                                    else:
+                                        # Try to find nurse name
+                                        name_match = re.search(r'\b([A-Z][a-z]+\s+[A-Z][a-z]+)\b', reasoning)
+                                        if name_match:
+                                            display_name = name_match.group(1)
+                                        else:
+                                            display_name = f"Unknown {person_type.capitalize()}"
+                                
                                 st.markdown(
                                     f"""<div class="match-card">
                                     <div style="display: flex; justify-content: space-between; align-items: center;">
-                                        <h4>{match['name']}</h4>
+                                        <h4>{display_name}</h4>
                                         <div class="compatibility-score {score_class}">{match['match_score']}</div>
                                     </div>
-                                    <p><strong>Contact:</strong> {match['email']}</p>
+                                    <p><strong>Contact:</strong> {match.get('email', 'No email available')}</p>
                                     <div class="match-reason">
-                                        <p><strong>Why this match works:</strong> {match['reasoning']}</p>
+                                        <p><strong>Why this match works:</strong> {match.get('reasoning', 'No reasoning provided')}</p>
                                     </div>
                                     </div>""",
                                     unsafe_allow_html=True
