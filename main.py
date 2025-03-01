@@ -239,6 +239,14 @@ def load_data():
         # Remove NPs from the MD dataframe
         md_metadata_df = md_metadata_df[md_metadata_df['Is NP'] == False].copy()
         
+        # Load the additional nurse info
+        try:
+            nurse_info_df = pd.read_csv('nurse_info.csv')
+            # Clean up the data
+            nurse_info_df = nurse_info_df.fillna('')
+        except FileNotFoundError:
+            nurse_info_df = pd.DataFrame(columns=['Ticket name', 'Addt\'l Service Notes', 'Resume'])
+        
         # Create nurses dataframe directly from the provided data or from hubspot CSV
         try:
             nurses_df = pd.read_csv('hubspot_moxie.csv')
@@ -246,63 +254,218 @@ def load_data():
             relevant_cols = [
                 'Ticket Number Counter', 'Bird Eats Bug Email', 'Provider License Type',
                 'Experience Level  ', 'State (MedSpa Premise)', 'Services Provided',
-                'Addt\'l Service Notes'
+                'Addt\'l Service Notes', 'Ticket name'  # Added Ticket name for joining
             ]
             # Use columns that are actually in the dataframe
             available_cols = [col for col in relevant_cols if col in nurses_df.columns]
             nurses_df = nurses_df[available_cols].dropna(subset=['Bird Eats Bug Email'])
-        except FileNotFoundError:
-            # Create a sample dataframe
-            nurse_data = [
-                {"Name": "April Gage", "License": "RN", "Email": "dnagage@yahoo.com"},
-                {"Name": "Michelle Conley", "License": "RN", "Email": "9lmccml9@gmail.com"},
-                {"Name": "Jacqueline Murray", "License": "RN", "Email": "inbloomaesthetics24@gmail.com"},
-                {"Name": "Gema Castellón", "License": "RN", "Email": "gcastellon05@yahoo.com"},
-                {"Name": "Sarah Medina", "License": "NP", "Email": "sarahgmedina1@gmail.com"},
-                {"Name": "Carolyn Lopez", "License": "NP", "Email": "defyingtimemt@yahoo.com"},
-                {"Name": "Shannon Asuchak", "License": "RN", "Email": "sgoritz@yahoo.com"},
-                {"Name": "Bobbi Garcia", "License": "RN", "Email": "radiancebeautyaesthetics@gmail.com"},
-                {"Name": "Ilona", "License": "RN", "Email": "regenmed8@gmail.com"},
-                {"Name": "Maribel Montes Person", "License": "RN", "Email": "maribelperson@gmail.com"}
-            ]
             
-            # Add nurse practitioners from the metadata if available
-            if len(nurse_providers_df) > 0:
-                for _, row in nurse_providers_df.iterrows():
-                    name = f"{row['First Name']} {row['Last Name'].replace(', Np', '')}"
-                    email = row['Email'] if pd.notna(row['Email']) else "unknown@example.com"
-                    traits = row['Personality Traits'] if pd.notna(row['Personality Traits']) else ""
-                    
-                    nurse_data.append({
-                        "Name": name,
-                        "License": "NP",
-                        "Email": email,
-                        "Traits": traits
-                    })
-            
-            # Convert to the format expected by the rest of the code
-            nurses_data_formatted = []
-            states = ["CA", "TX", "NY", "FL", "IL", "PA", "OH", "MI", "GA", "NC"]  # Sample states
-            experience_levels = ["New Graduate", "1-3 years", "3-5 years", "5+ years"]
-            
-            import random
-            
-            for nurse in nurse_data:
-                # Assign random states and experience for demo purposes
-                random_state = random.choice(states)
-                random_experience = random.choice(experience_levels)
+            # Merge with nurse_info_df to incorporate more detailed information
+            if not nurse_info_df.empty and 'Ticket name' in nurses_df.columns:
+                # Join on Ticket name
+                nurses_df = pd.merge(
+                    nurses_df,
+                    nurse_info_df[['Ticket name', 'Addt\'l Service Notes', 'Resume']],
+                    on='Ticket name',
+                    how='left',
+                    suffixes=('', '_additional')
+                )
                 
-                nurses_data_formatted.append({
-                    "Ticket Number Counter": nurse["Name"],
-                    "Bird Eats Bug Email": nurse["Email"],
-                    "Provider License Type": nurse["License"],
-                    "Experience Level  ": random_experience,
-                    "State (MedSpa Premise)": random_state,
-                    "Services Provided": "Botox, Fillers, Aesthetic services",
-                    "Addt'l Service Notes": nurse.get("Traits", f"Experienced in {random.choice(['medical aesthetics', 'cosmetic procedures', 'skincare treatments'])}")
-                })
-            
-            nurses_df = pd.DataFrame(nurses_data_formatted)
+                # Combine Addt'l Service Notes if both exist
+                if 'Addt\'l Service Notes_additional' in nurses_df.columns:
+                    nurses_df['Addt\'l Service Notes'] = nurses_df.apply(
+                        lambda row: f"{row['Addt\'l Service Notes']} {row['Addt\'l Service Notes_additional']}".strip()
+                        if pd.notna(row['Addt\'l Service Notes_additional']) else row['Addt\'l Service Notes'],
+                        axis=1
+                    )
+                    nurses_df = nurses_df.drop('Addt\'l Service Notes_additional', axis=1)
+                
+            elif 'Ticket Number Counter' in nurses_df.columns and 'Ticket name' in nurse_info_df.columns:
+                # Try to match based on name similarity
+                for idx, nurse_row in nurses_df.iterrows():
+                    if pd.isna(nurse_row['Ticket Number Counter']):
+                        continue
+                        
+                    nurse_name = str(nurse_row['Ticket Number Counter']).lower()
+                    
+                    # Find potential matches in nurse_info_df
+                    for _, info_row in nurse_info_df.iterrows():
+                        if pd.isna(info_row['Ticket name']):
+                            continue
+                            
+                        info_name = str(info_row['Ticket name']).lower()
+                        
+                        # Check if names are similar (contains each other or high similarity)
+                        if nurse_name in info_name or info_name in nurse_name:
+                            # Append additional notes if available
+                            if pd.notna(info_row['Addt\'l Service Notes']) and len(str(info_row['Addt\'l Service Notes']).strip()) > 0:
+                                current_notes = nurses_df.at[idx, 'Addt\'l Service Notes'] if pd.notna(nurses_df.at[idx, 'Addt\'l Service Notes']) else ""
+                                nurses_df.at[idx, 'Addt\'l Service Notes'] = f"{current_notes} {info_row['Addt\'l Service Notes']}".strip()
+                            
+                            # Add resume information if available
+                            if pd.notna(info_row['Resume']) and 'Resume' not in nurses_df.columns:
+                                nurses_df.loc[idx, 'Resume'] = info_row['Resume']
+                            elif pd.notna(info_row['Resume']):
+                                nurses_df.at[idx, 'Resume'] = info_row['Resume']
+                            
+                            break  # Found a match, move to next nurse
+        except FileNotFoundError:
+            # If nurse_info_df exists but hubspot_moxie.csv doesn't, create a dataframe from nurse_info
+            if not nurse_info_df.empty:
+                nurses_data = []
+                
+                for _, row in nurse_info_df.iterrows():
+                    if pd.notna(row['Ticket name']):
+                        # Extract likely license type from name or resume
+                        license_type = "RN"  # Default
+                        if pd.notna(row['Resume']):
+                            resume_text = str(row['Resume']).upper()
+                            if "NP" in resume_text or "NURSE PRACTITIONER" in resume_text:
+                                license_type = "NP"
+                            elif "PA" in resume_text or "PHYSICIAN ASSISTANT" in resume_text:
+                                license_type = "PA"
+                        
+                        # Extract likely state from resume if available
+                        state = "Unknown"
+                        if pd.notna(row['Resume']):
+                            # Simple state extraction from resume (could be enhanced)
+                            states = ["AL", "AK", "AZ", "AR", "CA", "CO", "CT", "DE", "FL", "GA", 
+                                     "HI", "ID", "IL", "IN", "IA", "KS", "KY", "LA", "ME", "MD", 
+                                     "MA", "MI", "MN", "MS", "MO", "MT", "NE", "NV", "NH", "NJ", 
+                                     "NM", "NY", "NC", "ND", "OH", "OK", "OR", "PA", "RI", "SC", 
+                                     "SD", "TN", "TX", "UT", "VT", "VA", "WA", "WV", "WI", "WY"]
+                            
+                            resume_text = str(row['Resume']).upper()
+                            for s in states:
+                                if f" {s} " in resume_text or f" {s}," in resume_text or f" {s}." in resume_text:
+                                    state = s
+                                    break
+                        
+                        # Extract services from additional notes if available
+                        services = ""
+                        if pd.notna(row['Addt\'l Service Notes']):
+                            services = str(row['Addt\'l Service Notes'])
+                        
+                        # Generate a placeholder email if none available
+                        email = f"{row['Ticket name'].replace(' ', '').lower()}@example.com"
+                        
+                        nurses_data.append({
+                            "Ticket Number Counter": row['Ticket name'],
+                            "Bird Eats Bug Email": email,
+                            "Provider License Type": license_type,
+                            "Experience Level  ": "Unknown",
+                            "State (MedSpa Premise)": state,
+                            "Services Provided": services,
+                            "Addt'l Service Notes": str(row['Addt\'l Service Notes']) if pd.notna(row['Addt\'l Service Notes']) else "",
+                            "Resume": str(row['Resume']) if pd.notna(row['Resume']) else ""
+                        })
+                
+                if nurses_data:
+                    nurses_df = pd.DataFrame(nurses_data)
+                else:
+                    # Create a sample dataframe
+                    nurse_data = [
+                        {"Name": "April Gage", "License": "RN", "Email": "dnagage@yahoo.com"},
+                        {"Name": "Michelle Conley", "License": "RN", "Email": "9lmccml9@gmail.com"},
+                        {"Name": "Jacqueline Murray", "License": "RN", "Email": "inbloomaesthetics24@gmail.com"},
+                        {"Name": "Gema Castellón", "License": "RN", "Email": "gcastellon05@yahoo.com"},
+                        {"Name": "Sarah Medina", "License": "NP", "Email": "sarahgmedina1@gmail.com"},
+                        {"Name": "Carolyn Lopez", "License": "NP", "Email": "defyingtimemt@yahoo.com"},
+                        {"Name": "Shannon Asuchak", "License": "RN", "Email": "sgoritz@yahoo.com"},
+                        {"Name": "Bobbi Garcia", "License": "RN", "Email": "radiancebeautyaesthetics@gmail.com"},
+                        {"Name": "Ilona", "License": "RN", "Email": "regenmed8@gmail.com"},
+                        {"Name": "Maribel Montes Person", "License": "RN", "Email": "maribelperson@gmail.com"}
+                    ]
+                    
+                    # Add nurse practitioners from the metadata if available
+                    if len(nurse_providers_df) > 0:
+                        for _, row in nurse_providers_df.iterrows():
+                            name = f"{row['First Name']} {row['Last Name'].replace(', Np', '')}"
+                            email = row['Email'] if pd.notna(row['Email']) else "unknown@example.com"
+                            traits = row['Personality Traits'] if pd.notna(row['Personality Traits']) else ""
+                            
+                            nurse_data.append({
+                                "Name": name,
+                                "License": "NP",
+                                "Email": email,
+                                "Traits": traits
+                            })
+                    
+                    # Convert to the format expected by the rest of the code
+                    nurses_data_formatted = []
+                    states = ["CA", "TX", "NY", "FL", "IL", "PA", "OH", "MI", "GA", "NC"]  # Sample states
+                    experience_levels = ["New Graduate", "1-3 years", "3-5 years", "5+ years"]
+                    
+                    import random
+                    
+                    for nurse in nurse_data:
+                        # Assign random states and experience for demo purposes
+                        random_state = random.choice(states)
+                        random_experience = random.choice(experience_levels)
+                        
+                        nurses_data_formatted.append({
+                            "Ticket Number Counter": nurse["Name"],
+                            "Bird Eats Bug Email": nurse["Email"],
+                            "Provider License Type": nurse["License"],
+                            "Experience Level  ": random_experience,
+                            "State (MedSpa Premise)": random_state,
+                            "Services Provided": "Botox, Fillers, Aesthetic services",
+                            "Addt'l Service Notes": nurse.get("Traits", f"Experienced in {random.choice(['medical aesthetics', 'cosmetic procedures', 'skincare treatments'])}")
+                        })
+                    
+                    nurses_df = pd.DataFrame(nurses_data_formatted)
+            else:
+                # Create a sample dataframe as in the original code
+                nurse_data = [
+                    {"Name": "April Gage", "License": "RN", "Email": "dnagage@yahoo.com"},
+                    {"Name": "Michelle Conley", "License": "RN", "Email": "9lmccml9@gmail.com"},
+                    {"Name": "Jacqueline Murray", "License": "RN", "Email": "inbloomaesthetics24@gmail.com"},
+                    {"Name": "Gema Castellón", "License": "RN", "Email": "gcastellon05@yahoo.com"},
+                    {"Name": "Sarah Medina", "License": "NP", "Email": "sarahgmedina1@gmail.com"},
+                    {"Name": "Carolyn Lopez", "License": "NP", "Email": "defyingtimemt@yahoo.com"},
+                    {"Name": "Shannon Asuchak", "License": "RN", "Email": "sgoritz@yahoo.com"},
+                    {"Name": "Bobbi Garcia", "License": "RN", "Email": "radiancebeautyaesthetics@gmail.com"},
+                    {"Name": "Ilona", "License": "RN", "Email": "regenmed8@gmail.com"},
+                    {"Name": "Maribel Montes Person", "License": "RN", "Email": "maribelperson@gmail.com"}
+                ]
+                
+                # Add nurse practitioners from the metadata if available
+                if len(nurse_providers_df) > 0:
+                    for _, row in nurse_providers_df.iterrows():
+                        name = f"{row['First Name']} {row['Last Name'].replace(', Np', '')}"
+                        email = row['Email'] if pd.notna(row['Email']) else "unknown@example.com"
+                        traits = row['Personality Traits'] if pd.notna(row['Personality Traits']) else ""
+                        
+                        nurse_data.append({
+                            "Name": name,
+                            "License": "NP",
+                            "Email": email,
+                            "Traits": traits
+                        })
+                
+                # Convert to the format expected by the rest of the code
+                nurses_data_formatted = []
+                states = ["CA", "TX", "NY", "FL", "IL", "PA", "OH", "MI", "GA", "NC"]  # Sample states
+                experience_levels = ["New Graduate", "1-3 years", "3-5 years", "5+ years"]
+                
+                import random
+                
+                for nurse in nurse_data:
+                    # Assign random states and experience for demo purposes
+                    random_state = random.choice(states)
+                    random_experience = random.choice(experience_levels)
+                    
+                    nurses_data_formatted.append({
+                        "Ticket Number Counter": nurse["Name"],
+                        "Bird Eats Bug Email": nurse["Email"],
+                        "Provider License Type": nurse["License"],
+                        "Experience Level  ": random_experience,
+                        "State (MedSpa Premise)": random_state,
+                        "Services Provided": "Botox, Fillers, Aesthetic services",
+                        "Addt'l Service Notes": nurse.get("Traits", f"Experienced in {random.choice(['medical aesthetics', 'cosmetic procedures', 'skincare treatments'])}")
+                    })
+                
+                nurses_df = pd.DataFrame(nurses_data_formatted)
         
         # Merge MD metadata with main doctors dataframe if possible
         if len(doctors_df) > 0 and len(md_metadata_df) > 0:
@@ -367,6 +530,41 @@ def load_data():
                 doctors_df['Create Date'] = '2023-01-01'  # Default date
             if 'Lifecycle Stage' not in doctors_df.columns:
                 doctors_df['Lifecycle Stage'] = 'Medical Director Onboarded'
+        
+        # Extract skills and services from resume data if available
+        if 'Resume' in nurses_df.columns:
+            # Function to extract skills from resume text
+            def extract_skills(resume_text):
+                if not pd.isna(resume_text) and resume_text:
+                    # Simple keywords to look for
+                    skill_keywords = [
+                        "botox", "filler", "injectable", "laser", "aesthetic", "skincare", 
+                        "dermal", "juvederm", "dysport", "restylane", "sculptra", "microneedling",
+                        "chemical peel", "facials", "dermaplaning", "hydrafacial", "prp",
+                        "coolsculpting", "thermage", "ultherapy", "kybella", "thread lift"
+                    ]
+                    
+                    found_skills = []
+                    resume_lower = resume_text.lower()
+                    
+                    for skill in skill_keywords:
+                        if skill in resume_lower:
+                            found_skills.append(skill.title())
+                    
+                    return ", ".join(found_skills)
+                return ""
+            
+            # Apply the function to extract skills
+            nurses_df['Extracted Skills'] = nurses_df['Resume'].apply(extract_skills)
+            
+            # Combine extracted skills with existing services provided
+            nurses_df['Services Provided'] = nurses_df.apply(
+                lambda row: f"{row['Services Provided']}, {row['Extracted Skills']}" 
+                if pd.notna(row['Services Provided']) and pd.notna(row['Extracted Skills']) and row['Extracted Skills'] 
+                else (row['Services Provided'] if pd.notna(row['Services Provided']) 
+                      else (row['Extracted Skills'] if pd.notna(row['Extracted Skills']) else "")),
+                axis=1
+            )
         
         return doctors_df, nurses_df
         
@@ -536,7 +734,8 @@ def create_claude_prompt(search_type, search_value, doctors_df, nurses_df, filte
                     str(nurse['Provider License Type']) if pd.notna(nurse['Provider License Type']) else '',
                     str(nurse['Experience Level  ']) if pd.notna(nurse['Experience Level  ']) else '',
                     str(nurse['Services Provided']) if pd.notna(nurse['Services Provided']) else '',
-                    str(nurse['Addt\'l Service Notes']) if pd.notna(nurse['Addt\'l Service Notes']) else ''
+                    str(nurse['Addt\'l Service Notes']) if pd.notna(nurse['Addt\'l Service Notes']) else '',
+                    str(nurse['Resume']) if 'Resume' in nurse and pd.notna(nurse['Resume']) else ''  # Include resume content if available
                 ]).lower()
                 
                 # Count how many keywords match
@@ -570,6 +769,13 @@ def create_claude_prompt(search_type, search_value, doctors_df, nurses_df, filte
             nurse_services = str(nurse['Services Provided']) if pd.notna(nurse['Services Provided']) else "None specified"
             nurse_notes = str(nurse['Addt\'l Service Notes']) if pd.notna(nurse['Addt\'l Service Notes']) else "None"
             
+            # Add resume info if available
+            nurse_resume = ""
+            if 'Resume' in nurse and pd.notna(nurse['Resume']):
+                # Extract a summary of the resume (first 300 chars)
+                resume_text = str(nurse['Resume'])
+                nurse_resume = resume_text[:300] + "..." if len(resume_text) > 300 else resume_text
+            
             # Add to prompt
             prompt += f"""
             Nurse:
@@ -580,8 +786,13 @@ def create_claude_prompt(search_type, search_value, doctors_df, nurses_df, filte
             - State: {nurse_state}
             - Services: {nurse_services}
             - Notes: {nurse_notes}
-            
             """
+            
+            # Add resume info if available
+            if nurse_resume:
+                prompt += f"- Resume Excerpt: {nurse_resume}\n"
+            
+            prompt += "\n"
         
         # Add response format instructions
         prompt += """
@@ -626,6 +837,13 @@ def create_claude_prompt(search_type, search_value, doctors_df, nurses_df, filte
         nurse_services = str(nurse['Services Provided']) if pd.notna(nurse['Services Provided']) else "None specified"
         nurse_notes = str(nurse['Addt\'l Service Notes']) if pd.notna(nurse['Addt\'l Service Notes']) else "None"
         
+        # Add resume info if available
+        nurse_resume = ""
+        if 'Resume' in nurse and pd.notna(nurse['Resume']):
+            # Extract a summary of the resume (first 300 chars)
+            resume_text = str(nurse['Resume'])
+            nurse_resume = resume_text[:300] + "..." if len(resume_text) > 300 else resume_text
+        
         # Create base prompt
         prompt = f"""
         You are an Operations Manager at Moxie tasked with matching nurses with medical directors.
@@ -639,6 +857,10 @@ def create_claude_prompt(search_type, search_value, doctors_df, nurses_df, filte
         - Services: {nurse_services}
         - Additional Notes: {nurse_notes}
         """
+        
+        # Add resume info if available
+        if nurse_resume:
+            prompt += f"- Resume Excerpt: {nurse_resume}\n"
         
         # Add filter requirements to the prompt
         if filters.get("md_age") and filters.get("md_age") != "Any":
