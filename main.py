@@ -1158,6 +1158,15 @@ def display_nurse_details(nurse):
     color: #2980b9;
     margin-right: 8px;
 }}
+
+.location-badge {{
+    display: inline-block;
+    background-color: #f0ad4e;
+    color: white;
+    padding: 4px 8px;
+    border-radius: 4px;
+    font-size: 14px;
+}}
 </style>
 
 <div class="nurse-info">
@@ -1168,8 +1177,8 @@ def display_nurse_details(nurse):
     </div>
     <div class="nurse-detail">
         <h4>Location</h4>
-        {state_html}
-        {ca_restriction}
+        <span class="location-badge">{state}</span>
+        {ca_restriction or ''}
     </div>
     <div class="nurse-detail">
         <h4>Services</h4>
@@ -1177,7 +1186,6 @@ def display_nurse_details(nurse):
     </div>
 </div>
 """, unsafe_allow_html=True)
-
 # Main application content
 doctors_df, nurses_df = load_data()
 
