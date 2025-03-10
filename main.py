@@ -1188,7 +1188,7 @@ else:
     with col2:
         st.metric("Nurses (RN/NP)", len(nurses_df))
     with col3:
-        st.markdown("**Powered by:** Claude AI")
+        st.markdown("**Powered by:** Chat GPT AI")
     
     # Get Claude API key from environment variable
     claude_api_key = os.getenv("ANTHROPIC_API_KEY", "")
@@ -1747,7 +1747,7 @@ else:
     # Explanation of how it works
     with st.expander("How the Moxie Matching System Works"):
         st.markdown("""
-        This specialized matching system uses Claude AI to intelligently match nurses with appropriate medical directors based on critical factors:
+        This specialized matching system uses ChatGPT AI to intelligently match nurses with appropriate medical directors based on critical factors:
         
         1. **State Licensing Requirements**: The system strictly enforces state licensing rules:
            - California nurses can ONLY be matched with California medical directors
