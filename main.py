@@ -1130,17 +1130,14 @@ def display_nurse_details(nurse):
     margin: 0 auto;
     font-family: Arial, sans-serif;
 }}
-
 .nurse-detail {{
     margin-bottom: 15px;
     padding-bottom: 15px;
     border-bottom: 1px solid #e0e0e0;
 }}
-
 .nurse-detail:last-child {{
     border-bottom: none;
 }}
-
 .nurse-detail h4 {{
     color: #2c3e50;
     margin-bottom: 10px;
@@ -1148,17 +1145,14 @@ def display_nurse_details(nurse):
     border-bottom: 2px solid #3498db;
     padding-bottom: 5px;
 }}
-
 .nurse-detail p {{
     margin: 5px 0;
     color: #34495e;
 }}
-
 .nurse-detail strong {{
     color: #2980b9;
     margin-right: 8px;
 }}
-
 .trait-tag.state-tag {{
     display: inline-block;
     background-color: #f0ad4e;
@@ -1168,7 +1162,6 @@ def display_nurse_details(nurse):
     font-size: 14px;
 }}
 </style>
-
 <div class="nurse-info">
     <div class="nurse-detail">
         <h4>License & Experience</h4>
@@ -1180,6 +1173,7 @@ def display_nurse_details(nurse):
         {state_html}
         {ca_restriction or ''}
     </div>
+</div>
 """, unsafe_allow_html=True)
 # Main application content
 doctors_df, nurses_df = load_data()
