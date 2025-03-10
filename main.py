@@ -1180,10 +1180,6 @@ def display_nurse_details(nurse):
         {state_html}
         {ca_restriction or ''}
     </div>
-    <div class="nurse-detail">
-        <h4>Services</h4>
-        {services_html if services_html else "No services specified"}
-    </div>
 </div>
 """, unsafe_allow_html=True)
 # Main application content
