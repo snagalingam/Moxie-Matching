@@ -434,7 +434,6 @@ def extract_md_preferences(prefs_text):
     return prefs
 
 # Function to create a matching prompt
-# Function to create a matching prompt
 def create_claude_prompt(search_type, search_value, doctors_df, nurses_df, filters=None):
     if filters is None:
         filters = {}
@@ -700,7 +699,8 @@ def create_claude_prompt(search_type, search_value, doctors_df, nurses_df, filte
         # Find the nurse
         nurse_row = nurses_df[
             nurses_df.apply(
-                lambda row: pd.notna(row['Ticket Number Counter']) and search_value.lower() in str(row['Ticket Number Counter']).lower(),
+                lambda row: pd.notna(row['Ticket Number Counter']) and search_value.lower() in str(row['Ticket Number Counter']).lower() or
+                           pd.notna(row['Bird Eats Bug Email']) and search_value.lower() in str(row['Bird Eats Bug Email']).lower(),
                 axis=1
             )
         ]
@@ -1361,41 +1361,72 @@ else:
                     return col
             return None
         
-        # Find the actual column name for 'Ticket Number Counter'
+        # Find nurse identifiers using multiple possible columns
         nurse_name_col = get_column_case_insensitive(nurses_df, 'Ticket Number Counter')
-        if not nurse_name_col:
-            st.error("Column 'Ticket Number Counter' not found in the data. Available columns: " + ", ".join(nurses_df.columns))
-            nurse_names = []
-        else:
-            # Extract nurse names properly
-            nurse_names = []
+        nurse_email_col = get_column_case_insensitive(nurses_df, 'Bird Eats Bug Email')
+
+        # Extract nurse identifiers, prioritizing names but falling back to emails
+        nurse_identifiers = []
+
+        # Try different columns to find identifiers
+        if nurse_email_col:  # First, collect emails since they're likely to be more reliable
+            for _, row in nurses_df.iterrows():
+                if pd.notna(row[nurse_email_col]):
+                    email = str(row[nurse_email_col]).strip()
+                    if email and '@' in email:  # Simple validation to ensure it's an email
+                        nurse_identifiers.append(email)
+
+        # If we also have names, prefer those but keep emails as fallback
+        if nurse_name_col:
+            name_based_identifiers = []
             for _, row in nurses_df.iterrows():
                 if pd.notna(row[nurse_name_col]):
                     name = str(row[nurse_name_col]).strip()
                     if name:  # Only add non-empty names
-                        nurse_names.append(name)
-        
+                        name_based_identifiers.append(name)
+            
+            # If we have names, use those instead of emails
+            if name_based_identifiers:
+                nurse_identifiers = name_based_identifiers
+
         # Display the dropdown
-        if not nurse_names:
-            st.warning("No nurse names found in the data. Please check your data file.")
+        if not nurse_identifiers:
+            st.warning("No nurse identifiers found in the data. Please check your data file's 'Ticket Number Counter' or 'Bird Eats Bug Email' columns.")
             selected_nurse = st.selectbox("Select Nurse:", ["No nurses available"])
             st.stop()  # Stop execution if no nurses are available
         else:
-            # Display how many names were found
-            st.info(f"Found {len(nurse_names)} nurses in the data.")
+            # Display how many nurses were found
+            st.info(f"Found {len(nurse_identifiers)} nurses in the data.")
             # Sort and add a blank option at the beginning
-            selected_nurse = st.selectbox("Select Nurse:", [""] + sorted(nurse_names))
-        
-        # If a nurse is selected, show their details
-        if selected_nurse:
-            nurse_row = nurses_df[
-                nurses_df.apply(
-                    lambda row: pd.notna(row['Ticket Number Counter']) and selected_nurse.lower() in str(row['Ticket Number Counter']).lower(),
-                    axis=1
-                )
-            ]
+            selected_nurse = st.selectbox("Select Nurse:", [""] + sorted(nurse_identifiers))
+
+        # Find the selected nurse in the dataframe - checking both name and email columns
+        if selected_nurse and selected_nurse != "No nurses available":
+            nurse_row = None
             
-            if not nurse_row.empty:
+            # Try to find by name first
+            if nurse_name_col:
+                name_matches = nurses_df[
+                    nurses_df.apply(
+                        lambda row: pd.notna(row[nurse_name_col]) and selected_nurse.lower() in str(row[nurse_name_col]).lower(),
+                        axis=1
+                    )
+                ]
+                if not name_matches.empty:
+                    nurse_row = name_matches
+            
+            # If not found by name, try email
+            if (nurse_row is None or nurse_row.empty) and nurse_email_col:
+                email_matches = nurses_df[
+                    nurses_df.apply(
+                        lambda row: pd.notna(row[nurse_email_col]) and selected_nurse.lower() in str(row[nurse_email_col]).lower(),
+                        axis=1
+                    )
+                ]
+                if not email_matches.empty:
+                    nurse_row = email_matches
+            
+            if nurse_row is not None and not nurse_row.empty:
                 nurse = nurse_row.iloc[0]
                 display_nurse_details(nurse)
         
@@ -1419,7 +1450,7 @@ else:
                 )
             
             # Determine location options based on nurse state
-            if selected_nurse and not nurse_row.empty:
+            if selected_nurse and nurse_row is not None and not nurse_row.empty:
                 nurse_state = str(nurse_row.iloc[0]['State (MedSpa Premise)']).upper() if pd.notna(nurse_row.iloc[0]['State (MedSpa Premise)']) else "Unknown"
                 
                 if nurse_state == "CA":
@@ -1435,7 +1466,7 @@ else:
         service_requirements = st.text_area("Specific Requirements or Preferences:", height=100, 
                                        placeholder="E.g., Looking for a mentor in fillers, prefer someone with teaching experience, etc.")
         
-        if selected_nurse and st.button("Find Matching Medical Directors"):
+        if selected_nurse and selected_nurse != "No nurses available" and st.button("Find Matching Medical Directors"):
             if not claude_api_key:
                 st.error("API key is not configured. Please set the ANTHROPIC_API_KEY environment variable.")
             else:
