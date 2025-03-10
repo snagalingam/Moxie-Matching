@@ -8,9 +8,9 @@ import time
 import re
 
 # Page config
-st.set_page_config(page_title="Moxie MD-Nurse Matching", layout="wide")
+st.set_page_config(page_title="Moxie Nurse-MD Matching", layout="wide")
 
-# Custom CSS
+# Custom CSS (reusing the existing styles)
 st.markdown("""
 <style>
     .match-card {
@@ -88,10 +88,20 @@ st.markdown("""
         display: inline-block;
         border: 1px solid #fed7d7;
     }
-    .multi-state {
+    .state-tag {
         background-color: #fffaf0;
         color: #dd6b20;
         border: 1px solid #feebc8;
+    }
+    .capacity-tag {
+        background-color: #f0fff4;
+        color: #276749;
+        border: 1px solid #c6f6d5;
+    }
+    .warning-tag {
+        background-color: #fff5f7;
+        color: #b83280;
+        border: 1px solid #fed7e2;
     }
     .compatibility-score {
         font-size: 28px;
@@ -124,13 +134,13 @@ st.markdown("""
         margin-bottom: 15px;
         border: 1px solid #e2e8f0;
     }
-    .md-info {
+    .nurse-info {
         display: flex;
         flex-wrap: wrap;
         gap: 10px;
         margin-top: 10px;
     }
-    .md-detail {
+    .nurse-detail {
         flex: 1;
         min-width: 200px;
         background-color: #f8f9fa;
@@ -138,10 +148,17 @@ st.markdown("""
         border-radius: 5px;
         border: 1px solid #e2e8f0;
     }
-    .md-detail h4 {
+    .nurse-detail h4 {
         margin-top: 0;
         border-bottom: 1px solid #e2e8f0;
         padding-bottom: 5px;
+    }
+    .state-restrictions {
+        background-color: #fff5f5;
+        padding: 10px;
+        border-radius: 5px;
+        margin-top: 10px;
+        border-left: 3px solid #fc8181;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -154,7 +171,7 @@ if 'password_correct' not in st.session_state:
 if not st.session_state['password_correct']:
     st.markdown("""
     <div class="password-container">
-        <h2 class="password-header">Moxie MD-Nurse Matching System</h2>
+        <h2 class="password-header">Moxie Nurse-MD Matching System</h2>
         <p>Please enter the password to access the system:</p>
     </div>
     """, unsafe_allow_html=True)
@@ -173,7 +190,7 @@ if not st.session_state['password_correct']:
     st.stop()
 
 # Main application (only runs if password is correct)
-st.markdown("<h1 class='main-header'>Moxie MD-Nurse Matching System</h1>", unsafe_allow_html=True)
+st.markdown("<h1 class='main-header'>Moxie Nurse-MD Matching System</h1>", unsafe_allow_html=True)
 
 # Load data
 @st.cache_data
@@ -188,11 +205,20 @@ def load_data():
             # Create a sample doctor dataframe if CSV is not available
             doctor_data = [
                 {"First Name": "John", "Last Name": "Smith", "Email": "john.smith@example.com", 
-                 "Residing State  (Lives In)": "CA", "Create Date": "2023-01-15", "Lifecycle Stage": "Medical Director Onboarded"},
+                 "Residing State  (Lives In)": "CA", "Create Date": "2023-01-15", "Lifecycle Stage": "Medical Director Onboarded",
+                 "Capacity Status": "Has capacity for 3 more NPs, 2 more RNs"},
                 {"First Name": "Emily", "Last Name": "Johnson", "Email": "emily.j@example.com", 
-                 "Residing State  (Lives In)": "TX", "Create Date": "2023-02-20", "Lifecycle Stage": "Medical Director Onboarded"},
+                 "Residing State  (Lives In)": "TX", "Create Date": "2023-02-20", "Lifecycle Stage": "Medical Director Onboarded",
+                 "Capacity Status": "At capacity for NPs, has capacity for 2 more RNs"},
                 {"First Name": "Michael", "Last Name": "Brown", "Email": "m.brown@example.com", 
-                 "Residing State  (Lives In)": "FL", "Create Date": "2023-03-10", "Lifecycle Stage": "Medical Director Onboarded"}
+                 "Residing State  (Lives In)": "FL", "Create Date": "2023-03-10", "Lifecycle Stage": "Medical Director Onboarded",
+                 "Capacity Status": "Has capacity for 1 more NP, at capacity for RNs"},
+                {"First Name": "Sarah", "Last Name": "Garcia", "Email": "s.garcia@example.com", 
+                 "Residing State  (Lives In)": "CA", "Create Date": "2023-04-05", "Lifecycle Stage": "Medical Director Onboarded",
+                 "Capacity Status": "At capacity for both NPs and RNs"},
+                {"First Name": "David", "Last Name": "Martinez", "Email": "d.martinez@example.com", 
+                 "Residing State  (Lives In)": "NY", "Create Date": "2023-05-12", "Lifecycle Stage": "Medical Director Onboarded",
+                 "Capacity Status": "Has capacity for 2 more NPs, 3 more RNs"}
             ]
             doctors_df = pd.DataFrame(doctor_data)
         
@@ -201,7 +227,8 @@ def load_data():
             md_metadata_df = pd.read_csv('md_metadata.csv')
         except FileNotFoundError:
             # If not found, create an empty dataframe with appropriate columns
-            md_metadata_df = pd.DataFrame(columns=['First Name', 'Last Name', 'Email', 'Residing State  (Lives In)', 'MD Preferences', 'Personality Traits'])
+            md_metadata_df = pd.DataFrame(columns=['First Name', 'Last Name', 'Email', 'Residing State  (Lives In)', 
+                                                  'MD Preferences', 'Personality Traits', 'Capacity Status'])
         
         # Process MD metadata
         # Handle First Name field - remove "Dr. " prefix if present
@@ -226,6 +253,15 @@ def load_data():
         # Split personality traits into a list for easier processing
         md_metadata_df['Traits List'] = md_metadata_df['Personality Traits'].apply(
             lambda x: [trait.strip() for trait in str(x).split(',')] if isinstance(x, str) else []
+        )
+        
+        # Extract capacity information
+        md_metadata_df['NP Capacity'] = md_metadata_df['Capacity Status'].apply(
+            lambda x: extract_capacity_info(x, 'NP') if isinstance(x, str) else 0
+        )
+        
+        md_metadata_df['RN Capacity'] = md_metadata_df['Capacity Status'].apply(
+            lambda x: extract_capacity_info(x, 'RN') if isinstance(x, str) else 0
         )
         
         # Identify if the row is actually a nurse practitioner - use individual boolean checks
@@ -254,16 +290,26 @@ def load_data():
         except FileNotFoundError:
             # Create a sample dataframe
             nurse_data = [
-                {"Name": "April Gage", "License": "RN", "Email": "dnagage@yahoo.com"},
-                {"Name": "Michelle Conley", "License": "RN", "Email": "9lmccml9@gmail.com"},
-                {"Name": "Jacqueline Murray", "License": "RN", "Email": "inbloomaesthetics24@gmail.com"},
-                {"Name": "Gema Castellón", "License": "RN", "Email": "gcastellon05@yahoo.com"},
-                {"Name": "Sarah Medina", "License": "NP", "Email": "sarahgmedina1@gmail.com"},
-                {"Name": "Carolyn Lopez", "License": "NP", "Email": "defyingtimemt@yahoo.com"},
-                {"Name": "Shannon Asuchak", "License": "RN", "Email": "sgoritz@yahoo.com"},
-                {"Name": "Bobbi Garcia", "License": "RN", "Email": "radiancebeautyaesthetics@gmail.com"},
-                {"Name": "Ilona", "License": "RN", "Email": "regenmed8@gmail.com"},
-                {"Name": "Maribel Montes Person", "License": "RN", "Email": "maribelperson@gmail.com"}
+                {"Name": "April Gage", "License": "RN", "Email": "dnagage@yahoo.com", "State": "CA", 
+                 "Experience": "3-5 years", "Services": "Botox, Fillers, Chemical Peels"},
+                {"Name": "Michelle Conley", "License": "RN", "Email": "9lmccml9@gmail.com", "State": "TX", 
+                 "Experience": "1-3 years", "Services": "Botox, Microneedling"},
+                {"Name": "Jacqueline Murray", "License": "RN", "Email": "inbloomaesthetics24@gmail.com", "State": "FL", 
+                 "Experience": "5+ years", "Services": "Botox, Fillers, Laser Treatments"},
+                {"Name": "Gema Castellón", "License": "RN", "Email": "gcastellon05@yahoo.com", "State": "CA", 
+                 "Experience": "New Graduate", "Services": "Botox, PRP Therapy"},
+                {"Name": "Sarah Medina", "License": "NP", "Email": "sarahgmedina1@gmail.com", "State": "NY", 
+                 "Experience": "3-5 years", "Services": "Botox, Fillers, Medical Weight Loss"},
+                {"Name": "Carolyn Lopez", "License": "NP", "Email": "defyingtimemt@yahoo.com", "State": "CA", 
+                 "Experience": "5+ years", "Services": "Botox, Fillers, PDO Threads, Sclerotherapy"},
+                {"Name": "Shannon Asuchak", "License": "RN", "Email": "sgoritz@yahoo.com", "State": "TX", 
+                 "Experience": "1-3 years", "Services": "Botox, Chemical Peels, Microdermabrasion"},
+                {"Name": "Bobbi Garcia", "License": "RN", "Email": "radiancebeautyaesthetics@gmail.com", "State": "FL", 
+                 "Experience": "3-5 years", "Services": "Botox, Fillers, Dermaplaning"},
+                {"Name": "Ilona Rubin", "License": "RN", "Email": "regenmed8@gmail.com", "State": "NY", 
+                 "Experience": "5+ years", "Services": "Botox, Fillers, Kybella, Laser Hair Removal"},
+                {"Name": "Maribel Montes Person", "License": "RN", "Email": "maribelperson@gmail.com", "State": "CA", 
+                 "Experience": "New Graduate", "Services": "Botox, Fillers"}
             ]
             
             # Add nurse practitioners from the metadata if available
@@ -282,24 +328,16 @@ def load_data():
             
             # Convert to the format expected by the rest of the code
             nurses_data_formatted = []
-            states = ["CA", "TX", "NY", "FL", "IL", "PA", "OH", "MI", "GA", "NC"]  # Sample states
-            experience_levels = ["New Graduate", "1-3 years", "3-5 years", "5+ years"]
-            
-            import random
             
             for nurse in nurse_data:
-                # Assign random states and experience for demo purposes
-                random_state = random.choice(states)
-                random_experience = random.choice(experience_levels)
-                
                 nurses_data_formatted.append({
                     "Ticket Number Counter": nurse["Name"],
                     "Bird Eats Bug Email": nurse["Email"],
                     "Provider License Type": nurse["License"],
-                    "Experience Level  ": random_experience,
-                    "State (MedSpa Premise)": random_state,
-                    "Services Provided": "Botox, Fillers, Aesthetic services",
-                    "Addt'l Service Notes": nurse.get("Traits", f"Experienced in {random.choice(['medical aesthetics', 'cosmetic procedures', 'skincare treatments'])}")
+                    "Experience Level  ": nurse.get("Experience", "1-3 years"),
+                    "State (MedSpa Premise)": nurse.get("State", "CA"),
+                    "Services Provided": nurse.get("Services", "Botox, Fillers"),
+                    "Addt'l Service Notes": nurse.get("Traits", "")
                 })
             
             nurses_df = pd.DataFrame(nurses_data_formatted)
@@ -309,7 +347,8 @@ def load_data():
             # Try to match by email first (most reliable)
             merged_df = pd.merge(
                 doctors_df, 
-                md_metadata_df[['Email', 'MD Preferences', 'Personality Traits', 'Multiple States', 'States List', 'Has Preferences', 'Traits List']], 
+                md_metadata_df[['Email', 'MD Preferences', 'Personality Traits', 'Multiple States', 
+                               'States List', 'Has Preferences', 'Traits List', 'NP Capacity', 'RN Capacity']], 
                 on='Email', 
                 how='left'
             )
@@ -334,6 +373,8 @@ def load_data():
                         merged_df.at[idx, 'States List'] = metadata['States List']
                         merged_df.at[idx, 'Has Preferences'] = metadata['Has Preferences']
                         merged_df.at[idx, 'Traits List'] = metadata['Traits List']
+                        merged_df.at[idx, 'NP Capacity'] = metadata['NP Capacity']
+                        merged_df.at[idx, 'RN Capacity'] = metadata['RN Capacity']
             
             doctors_df = merged_df
             
@@ -342,6 +383,8 @@ def load_data():
             doctors_df['Personality Traits'] = doctors_df['Personality Traits'].fillna('')
             doctors_df['Multiple States'] = doctors_df['Multiple States'].fillna(False)
             doctors_df['Has Preferences'] = doctors_df['Has Preferences'].fillna(False)
+            doctors_df['NP Capacity'] = doctors_df['NP Capacity'].fillna(0)
+            doctors_df['RN Capacity'] = doctors_df['RN Capacity'].fillna(0)
             
             # Ensure States List is properly filled - handling Series safely
             doctors_df['States List'] = doctors_df.apply(
@@ -358,6 +401,13 @@ def load_data():
                 axis=1
             )
             
+            # If Capacity Status isn't there, create it from the NP and RN capacity
+            if 'Capacity Status' not in doctors_df.columns:
+                doctors_df['Capacity Status'] = doctors_df.apply(
+                    lambda row: create_capacity_status(row['NP Capacity'], row['RN Capacity']),
+                    axis=1
+                )
+            
         # If we still don't have metadata for doctors, use the metadata dataframe directly
         elif len(doctors_df) == 0 and len(md_metadata_df) > 0:
             doctors_df = md_metadata_df.copy()
@@ -373,6 +423,28 @@ def load_data():
     except Exception as e:
         st.error(f"Error loading data: {e}")
         return None, None
+
+# Helper function to extract capacity information
+def extract_capacity_info(capacity_text, license_type):
+    if not isinstance(capacity_text, str):
+        return 0
+    
+    # Check for "at capacity" phrases
+    if f"at capacity for {license_type}s" in capacity_text.lower():
+        return 0
+    
+    # Look for capacity numbers
+    match = re.search(r'(\d+)\s+more\s+' + license_type + r's', capacity_text, re.IGNORECASE)
+    if match:
+        return int(match.group(1))
+    
+    return 0  # Default to 0 if no capacity info found
+
+# Helper function to create capacity status from NP and RN capacity
+def create_capacity_status(np_capacity, rn_capacity):
+    np_status = f"Has capacity for {np_capacity} more NPs" if np_capacity > 0 else "At capacity for NPs"
+    rn_status = f"Has capacity for {rn_capacity} more RNs" if rn_capacity > 0 else "At capacity for RNs"
+    return f"{np_status}, {rn_status}"
 
 # Extract traits/preferences for display
 def extract_personality_traits(traits_text):
@@ -399,7 +471,7 @@ def extract_md_preferences(prefs_text):
 def create_claude_prompt(search_type, search_value, doctors_df, nurses_df, filters=None):
     if filters is None:
         filters = {}
-        
+    
     if search_type == "md":
         # Find the doctor in the dataframe
         doctor_row = doctors_df[
@@ -420,6 +492,11 @@ def create_claude_prompt(search_type, search_value, doctors_df, nurses_df, filte
         states = doctor.get('States List', [])
         if not states and 'Residing State  (Lives In)' in doctor:
             states = [doctor['Residing State  (Lives In)']]
+            
+        # Get capacity information
+        capacity_status = doctor.get('Capacity Status', '')
+        np_capacity = doctor.get('NP Capacity', 0)
+        rn_capacity = doctor.get('RN Capacity', 0)
         
         # Create base prompt
         prompt = f"""
@@ -430,6 +507,9 @@ def create_claude_prompt(search_type, search_value, doctors_df, nurses_df, filte
         - Email: {doctor['Email']}
         - State(s): {', '.join(str(s) for s in states if s)}
         - Onboarded: {doctor.get('Create Date', 'Unknown')}
+        - Capacity Status: {capacity_status}
+        - NP Capacity: {np_capacity}
+        - RN Capacity: {rn_capacity}
         """
         
         # Add personality traits if available
@@ -439,6 +519,20 @@ def create_claude_prompt(search_type, search_value, doctors_df, nurses_df, filte
         # Add MD preferences if available
         if md_preferences:
             prompt += f"- Preferences: {md_preferences}\n"
+            
+        # Add important state constraints
+        prompt += """
+        IMPORTANT STATE RESTRICTIONS:
+        - California: Medical directors in California can only supervise nurses in California.
+        - For other states, prioritize same-state matches but nearby states are acceptable if specified in filters.
+        """
+        
+        # Add capacity note
+        prompt += """
+        CAPACITY REQUIREMENTS:
+        - Check each nurse's license type (RN or NP) against the doctor's capacity
+        - Do NOT match with nurses whose license type exceeds the doctor's capacity
+        """
         
         # Add filter requirements to the prompt
         if filters.get("experience"):
@@ -447,7 +541,9 @@ def create_claude_prompt(search_type, search_value, doctors_df, nurses_df, filte
         if filters.get("location") == "Same State Only":
             prompt += "\nLocation requirement: Only include nurses in the same state as the doctor."
         elif filters.get("location") == "Nearby States Acceptable":
-            prompt += "\nLocation preference: Prioritize nurses in the same state, but nearby states are acceptable."
+            prompt += "\nLocation preference: Prioritize nurses in the same state, but nearby states are acceptable if not in California."
+        elif filters.get("location") == "Any Location":
+            prompt += "\nLocation preference: While prioritizing same-state matches, any location is acceptable EXCEPT for California doctors who must be matched with California nurses only."
             
         if filters.get("license_type") and filters.get("license_type") != "Any":
             prompt += f"\n\nOnly looking for nurses with license type: {filters['license_type']}"
@@ -458,31 +554,53 @@ def create_claude_prompt(search_type, search_value, doctors_df, nurses_df, filte
         prompt += """
         
         Using the doctor information above, analyze the following nurse candidates and identify the top 3 best matches based on:
-        1. Location match (highest priority - same state is ideal)
-        2. Experience level compatibility (experienced doctors can mentor newer nurses)
-        3. Service offering alignment
-        4. Personality compatibility
-        5. Adherence to doctor's preferences
-        6. Any specific notes or requirements mentioned
+        1. State licensing requirements (STRICT requirement for California)
+        2. Capacity availability for the nurse's license type (STRICT requirement)
+        3. Experience level compatibility (experienced doctors can mentor newer nurses)
+        4. Service offering alignment
+        5. Personality compatibility
+        6. Adherence to doctor's preferences
+        7. Any specific notes or requirements mentioned
         
         For each match, provide:
         1. The nurse's name
         2. Contact information
-        3. A detailed and robust explanation of why they're a good match, making specific connections between:
+        3. License type (important for capacity verification)
+        4. A detailed explanation of why they're a good match, making specific connections between:
+           - How this nurse's license type fits within the doctor's capacity
+           - How they meet state licensing requirements
            - The doctor's personality traits and the nurse's background/experience
            - How the doctor's preferences align with the nurse's profile
            - Shared geographical advantages of their locations
            - Why their experience levels complement each other
-           - How the nurse's services match the doctor's expertise
-        4. A match score out of 10
+        5. A match score out of 10
         
-        Be specific and detailed in your reasoning, drawing direct connections between the doctor's profile and the nurse's background. Mention specific personality traits and work style factors that make them a good team.
+        Be specific and detailed in your reasoning, drawing direct connections between the doctor's profile and the nurse's background.
         
         Available Nurses:
         """
         
         # Apply filters to nurses
         filtered_nurses = nurses_df.copy()
+        
+        # STRICT FILTER: Apply California restriction
+        if "CA" in [s.upper() for s in states if s]:
+            filtered_nurses = filtered_nurses[
+                filtered_nurses['State (MedSpa Premise)'].str.upper() == "CA"
+            ]
+        
+        # STRICT FILTER: Apply capacity check
+        # First, check NP capacity
+        if np_capacity <= 0:
+            filtered_nurses = filtered_nurses[
+                filtered_nurses['Provider License Type'].str.upper() != "NP"
+            ]
+        
+        # Then check RN capacity
+        if rn_capacity <= 0:
+            filtered_nurses = filtered_nurses[
+                filtered_nurses['Provider License Type'].str.upper() != "RN"
+            ]
         
         # Apply experience filter if specified
         if filters.get("experience") and filters.get("experience") != "Any":
@@ -504,10 +622,15 @@ def create_claude_prompt(search_type, search_value, doctors_df, nurses_df, filte
         else:
             # Priority to same state nurses
             same_state_nurses = filtered_nurses[filtered_nurses['State (MedSpa Premise)'].isin(states)]
-            other_nurses = filtered_nurses[~filtered_nurses['State (MedSpa Premise)'].isin(states)]
             
-            # Combine same state and other nurses, prioritizing same state
-            selected_nurses = pd.concat([same_state_nurses, other_nurses])
+            # For California doctors, only match with California nurses
+            if "CA" in [s.upper() for s in states if s]:
+                selected_nurses = same_state_nurses
+            else:
+                # For non-CA doctors, can match with nurses from other states
+                other_nurses = filtered_nurses[~filtered_nurses['State (MedSpa Premise)'].isin(states)]
+                # Combine same state and other nurses, prioritizing same state
+                selected_nurses = pd.concat([same_state_nurses, other_nurses])
         
         # Check MD preferences for any exclusions
         if md_preferences:
@@ -551,13 +674,15 @@ def create_claude_prompt(search_type, search_value, doctors_df, nurses_df, filte
             if top_matches:
                 selected_nurses = pd.DataFrame(top_matches)
         
-        # If no nurses match the filters, fall back to showing some results
+        # If no nurses match the filters, provide clear feedback
         if selected_nurses.empty:
-            selected_nurses = nurses_df.head(20)
-            prompt += "\nNote: No nurses matched all specified filters, so showing a general selection.\n\n"
-        else:
-            # Limit to top 20 for prompt length
-            selected_nurses = selected_nurses.head(20)
+            if "CA" in [s.upper() for s in states if s]:
+                return None, "No California nurses found that match this doctor's capacity and requirements. Please check back later or adjust filters."
+            else:
+                return None, "No nurses found that match this doctor's capacity and requirements. Please check back later or adjust filters."
+        
+        # Limit to top 20 for prompt length
+        selected_nurses = selected_nurses.head(20)
         
         # Add nurse information to the prompt
         for _, nurse in selected_nurses.iterrows():
@@ -591,8 +716,9 @@ def create_claude_prompt(search_type, search_value, doctors_df, nurses_df, filte
                 {
                     "name": "Nurse Name",
                     "email": "nurse@email.com",
+                    "license_type": "RN or NP",
                     "match_score": 8.5,
-                    "reasoning": "Detailed explanation of why this is a good match that specifically mentions the doctor's personality traits and how they align with the nurse's profile"
+                    "reasoning": "Detailed explanation of why this is a good match that specifically mentions capacity, state requirements, and compatibility factors"
                 },
                 ...
             ]
@@ -628,7 +754,7 @@ def create_claude_prompt(search_type, search_value, doctors_df, nurses_df, filte
         
         # Create base prompt
         prompt = f"""
-        You are an Operations Manager at Moxie tasked with matching nurses with medical directors.
+        You are an Operations Manager at Moxie tasked with matching nurses with the right medical directors.
         
         Nurse Information:
         - Name: {nurse_name}
@@ -638,6 +764,18 @@ def create_claude_prompt(search_type, search_value, doctors_df, nurses_df, filte
         - State: {nurse_state}
         - Services: {nurse_services}
         - Additional Notes: {nurse_notes}
+        
+        IMPORTANT STATE RESTRICTIONS:
+        - California: Nurses from California can ONLY be matched with medical directors in California due to strict state licensing requirements.
+        - For other states, prioritize same-state matches but nearby states are acceptable if specified in filters.
+        """
+        
+        # Add capacity note
+        prompt += """
+        CAPACITY REQUIREMENTS:
+        - Medical directors have limits on how many nurses they can supervise
+        - Check each MD's capacity for the specific license type (RN or NP)
+        - Do NOT match the nurse with any MD who is at capacity for their license type
         """
         
         # Add filter requirements to the prompt
@@ -650,7 +788,9 @@ def create_claude_prompt(search_type, search_value, doctors_df, nurses_df, filte
         if filters.get("location") == "Same State Only":
             prompt += "\nLocation requirement: Only include medical directors in the same state as the nurse."
         elif filters.get("location") == "Nearby States Acceptable":
-            prompt += "\nLocation preference: Prioritize medical directors in the same state, but nearby states are acceptable."
+            prompt += "\nLocation preference: Prioritize medical directors in the same state, but nearby states are acceptable if not in California."
+        elif filters.get("location") == "Any Location":
+            prompt += "\nLocation preference: While prioritizing same-state matches, any location is acceptable EXCEPT for California nurses who must be matched with California medical directors only."
             
         if filters.get("service_requirements") and filters.get("service_requirements").strip():
             prompt += f"\n\nAdditional service requirements to consider:\n{filters['service_requirements']}"
@@ -658,30 +798,64 @@ def create_claude_prompt(search_type, search_value, doctors_df, nurses_df, filte
         prompt += """
         
         Using the nurse information above, analyze the following medical directors and identify the top 3 best matches based on:
-        1. Location match (highest priority - same state is ideal)
-        2. Experience level compatibility (experienced doctors can mentor newer nurses)
-        3. Personality compatibility
-        4. Doctor's preferences and capacity for the nurse's license type
-        5. Any specific notes or requirements mentioned
+        1. State licensing requirements (STRICT requirement for California)
+        2. Capacity availability for this nurse's license type (STRICT requirement)
+        3. Experience level compatibility (experienced doctors can mentor newer nurses)
+        4. Personality compatibility
+        5. Doctor's preferences and requirements
+        6. Any specific notes or requirements mentioned
         
         For each match, provide:
         1. The doctor's name
         2. Contact information
-        3. A detailed and robust explanation of why they're a good match, making specific connections between:
-           - The doctor's personality traits and how they align with the nurse's experience level
-           - Whether the doctor's working style is beneficial for this nurse
+        3. Capacity status
+        4. A detailed explanation of why they're a good match, making specific connections between:
+           - How this specific doctor has capacity for this nurse's license type
+           - How they meet state licensing requirements 
+           - How the doctor's personality traits and working style benefit this nurse
            - Specific geographic advantages of their locations
-           - How their experience and expertise complement each other
-           - How their personalities would likely create a positive working relationship
-        4. A match score out of 10
+           - How their experience levels complement each other
+        5. A match score out of 10
         
-        Be specific and detailed in your reasoning, drawing direct connections between their profiles. Mention concrete personality traits and preferences that make them compatible.
+        Be specific and detailed in your reasoning, drawing direct connections between their profiles.
         
         Available Medical Directors:
         """
         
         # Filter doctors based on criteria
         filtered_doctors = doctors_df.copy()
+        
+        # STRICT FILTER: Apply California restriction
+        if nurse_state.upper() == "CA":
+            filtered_doctors = filtered_doctors[
+                filtered_doctors.apply(
+                    lambda row: "CA" in row.get('States List', []) if isinstance(row.get('States List'), list)
+                    else row.get('Residing State  (Lives In)', '').upper() == "CA",
+                    axis=1
+                )
+            ]
+        
+        # STRICT FILTER: Apply capacity check based on license type
+        if nurse_license.upper() == "NP":
+            filtered_doctors = filtered_doctors[
+                filtered_doctors.apply(
+                    lambda row: row.get('NP Capacity', 0) > 0 if 'NP Capacity' in row else 
+                    ("at capacity for np" not in str(row.get('Capacity Status', '')).lower() and 
+                     "capacity for" in str(row.get('Capacity Status', '')).lower() and
+                     "np" in str(row.get('Capacity Status', '')).lower()),
+                    axis=1
+                )
+            ]
+        elif nurse_license.upper() == "RN":
+            filtered_doctors = filtered_doctors[
+                filtered_doctors.apply(
+                    lambda row: row.get('RN Capacity', 0) > 0 if 'RN Capacity' in row else
+                    ("at capacity for rn" not in str(row.get('Capacity Status', '')).lower() and
+                     "capacity for" in str(row.get('Capacity Status', '')).lower() and
+                     "rn" in str(row.get('Capacity Status', '')).lower()),
+                    axis=1
+                )
+            ]
         
         # Apply MD age filter if specified
         if filters.get("md_age") and filters.get("md_age") != "Any":
@@ -717,19 +891,6 @@ def create_claude_prompt(search_type, search_value, doctors_df, nurses_df, filte
                 )
             ]
         
-        # Check for "maxed out" status with the nurse's license type
-        if nurse_license:
-            # Filter out doctors who are maxed out on this license type
-            license_filter = nurse_license.upper()
-            filtered_doctors = filtered_doctors[
-                ~filtered_doctors['MD Preferences'].str.contains(
-                    f'maxed out.*{license_filter}|maxed.*{license_filter}', 
-                    case=False, 
-                    na=False, 
-                    regex=True
-                )
-            ]
-        
         # Apply keyword filter from service requirements if specified
         if filters.get("service_requirements") and filters.get("service_requirements").strip():
             keywords = filters.get("service_requirements").lower().split()
@@ -754,12 +915,14 @@ def create_claude_prompt(search_type, search_value, doctors_df, nurses_df, filte
             if top_matches:
                 filtered_doctors = pd.DataFrame(top_matches)
         
-        # If filters resulted in no doctors, fall back to original selection method
+        # If filters resulted in no doctors, provide clear feedback
         if filtered_doctors.empty:
-            filtered_doctors = doctors_df
-            prompt += "\nNote: No medical directors matched all specified filters, so showing a general selection.\n\n"
+            if nurse_state.upper() == "CA":
+                return None, "No California medical directors found with capacity for this nurse's license type. Please check back later or adjust requirements."
+            else:
+                return None, "No medical directors found with available capacity for this nurse's license type. Please check back later or adjust requirements."
         
-        # Select doctors to include
+        # Select doctors to include, prioritizing state matches
         if nurse_state != "Unknown":
             # Find doctors in the same state (using States List if available)
             same_state_doctors = filtered_doctors[
@@ -770,17 +933,20 @@ def create_claude_prompt(search_type, search_value, doctors_df, nurses_df, filte
                 )
             ]
             
-            # Find other doctors
-            other_doctors = filtered_doctors[
-                ~filtered_doctors.apply(
-                    lambda row: nurse_state in row.get('States List', []) if isinstance(row.get('States List'), list)
-                    else nurse_state == row.get('Residing State  (Lives In)', ''),
-                    axis=1
-                )
-            ]
-            
-            # Prioritize same state doctors
-            selected_doctors = pd.concat([same_state_doctors.head(10), other_doctors.head(10)])
+            # Find other doctors (only if not a CA nurse)
+            if nurse_state.upper() != "CA" and filters.get("location") != "Same State Only":
+                other_doctors = filtered_doctors[
+                    ~filtered_doctors.apply(
+                        lambda row: nurse_state in row.get('States List', []) if isinstance(row.get('States List'), list)
+                        else nurse_state == row.get('Residing State  (Lives In)', ''),
+                        axis=1
+                    )
+                ]
+                
+                # Prioritize same state doctors
+                selected_doctors = pd.concat([same_state_doctors.head(10), other_doctors.head(10)])
+            else:
+                selected_doctors = same_state_doctors.head(20)
         else:
             selected_doctors = filtered_doctors.head(20)
         
@@ -789,6 +955,13 @@ def create_claude_prompt(search_type, search_value, doctors_df, nurses_df, filte
             # Get the states (handling multiple states)
             states = doctor.get('States List', []) if isinstance(doctor.get('States List'), list) else [doctor.get('Residing State  (Lives In)', '')]
             states_str = ', '.join(str(s) for s in states if s)
+            
+            # Get capacity information based on nurse's license type
+            capacity_status = doctor.get('Capacity Status', '')
+            if nurse_license.upper() == "NP":
+                capacity_info = f"NP Capacity: {doctor.get('NP Capacity', 'Unknown')}"
+            else:  # RN or other
+                capacity_info = f"RN Capacity: {doctor.get('RN Capacity', 'Unknown')}"
             
             # Get personality traits and preferences
             traits = doctor.get('Personality Traits', '')
@@ -799,6 +972,8 @@ def create_claude_prompt(search_type, search_value, doctors_df, nurses_df, filte
             - Name: {doctor['First Name']} {doctor['Last Name']}
             - Email: {doctor['Email']}
             - State(s): {states_str}
+            - {capacity_info}
+            - Capacity Status: {capacity_status}
             """
             
             if traits:
@@ -817,8 +992,9 @@ def create_claude_prompt(search_type, search_value, doctors_df, nurses_df, filte
                 {
                     "name": "Dr. Name",
                     "email": "doctor@email.com",
+                    "capacity_status": "Has capacity for X more of this license type",
                     "match_score": 8.5, 
-                    "reasoning": "Detailed explanation of why this is a good match that specifically references the doctor's personality traits and how they align with the nurse's needs"
+                    "reasoning": "Detailed explanation of why this is a good match that specifically references capacity, state requirements, and personality fit"
                 },
                 ...
             ]
@@ -832,7 +1008,16 @@ def create_claude_prompt(search_type, search_value, doctors_df, nurses_df, filte
     elif search_type == "manual":
         # Manual entry form with additional filter context
         prompt = f"""
-        You are an Operations Manager at Moxie tasked with matching medical directors with nurses.
+        You are an Operations Manager at Moxie tasked with matching nurses with medical directors.
+        
+        IMPORTANT STATE RESTRICTIONS:
+        - California: Nurses from California can ONLY be matched with medical directors in California due to strict state licensing requirements.
+        - For other states, prioritize same-state matches but nearby states are acceptable.
+        
+        CAPACITY REQUIREMENTS:
+        - Medical directors have limits on how many nurses they can supervise
+        - You must check each MD's capacity for the specific license type (RN or NP)
+        - Do NOT match a nurse with any MD who is at capacity for their license type
         
         A user has submitted the following information:
         {search_value}
@@ -852,13 +1037,14 @@ def create_claude_prompt(search_type, search_value, doctors_df, nurses_df, filte
         For each match, provide:
         1. The name of the matched professional
         2. Contact information if available
-        3. A detailed and robust explanation of why they're a good match, specifically:
+        3. Capacity status (if matching with a doctor)
+        4. A detailed explanation of why they're a good match, specifically:
+           - How they meet state licensing requirements (especially for California)
+           - Available capacity for the nurse's license type (if applicable)
            - How their personalities would complement each other
-           - How their experience levels align or complement each other
-           - Specific geographic advantages
+           - How their experience levels align
            - Any shared specialties or interests
-           - Why they would work well as a team based on their traits
-        4. A match score out of 10
+        5. A match score out of 10
         
         Be specific in your reasoning, with concrete examples of why these individuals would work well together.
         
@@ -869,8 +1055,9 @@ def create_claude_prompt(search_type, search_value, doctors_df, nurses_df, filte
                 {
                     "name": "Name",
                     "email": "email@example.com",
+                    "capacity_status": "Has capacity for X more of this license type" (include only if matching with a doctor),
                     "match_score": 8.5,
-                    "reasoning": "Detailed explanation of why this is a good match with specific references to personality traits and compatibility factors"
+                    "reasoning": "Detailed explanation of why this is a good match with specific references to state requirements, capacity, and compatibility factors"
                 },
                 ...
             ]
@@ -880,6 +1067,9 @@ def create_claude_prompt(search_type, search_value, doctors_df, nurses_df, filte
         """
         
         return prompt, None
+    
+    else:  # For backward compatibility or future expansion
+        return None, "Invalid search type specified."
 
 # Create a hash from the prompt for caching
 def get_prompt_hash(prompt):
@@ -909,7 +1099,7 @@ def query_claude(prompt, api_key, max_retries=2):
                 model=current_model,
                 max_tokens=4000,
                 temperature=0.2,
-                system="You are a medical staffing expert at Moxie. You help match medical directors with nurses based on their location, experience, services offered, personality traits, and other relevant factors. You always respond in JSON format as specified in the prompts.",
+                system="You are a medical staffing expert at Moxie. You help match nurses with medical directors based on their location, experience, services offered, personality traits, and other relevant factors. You always prioritize state licensing requirements (especially for California) and capacity limitations. You always respond in JSON format as specified in the prompts.",
                 messages=[
                     {"role": "user", "content": prompt}
                 ]
@@ -935,46 +1125,49 @@ def query_claude(prompt, api_key, max_retries=2):
                 st.error(f"API error: {error_str}")
                 return json.dumps({"error": f"API error: {error_str}"})
 
-# Display MD traits and preferences in a nice way
-def display_md_details(doctor):
-    # Get traits and preferences
-    traits = extract_personality_traits(doctor.get('Personality Traits', ''))
-    preferences = extract_md_preferences(doctor.get('MD Preferences', ''))
-    states = doctor.get('States List', [])
-    if not states and 'Residing State  (Lives In)' in doctor:
-        states = [doctor['Residing State  (Lives In)']]
+# Display nurse information in a nice way
+def display_nurse_details(nurse):
+    nurse_name = str(nurse['Ticket Number Counter']) if pd.notna(nurse['Ticket Number Counter']) else "Unknown"
+    nurse_license = str(nurse['Provider License Type']) if pd.notna(nurse['Provider License Type']) else "Unknown"
+    nurse_experience = str(nurse['Experience Level  ']) if pd.notna(nurse['Experience Level  ']) else "Unknown"
+    nurse_state = str(nurse['State (MedSpa Premise)']) if pd.notna(nurse['State (MedSpa Premise)']) else "Unknown"
+    nurse_services = str(nurse['Services Provided']) if pd.notna(nurse['Services Provided']) else "None specified"
     
-    # Display states
-    states_html = ""
-    for state in states:
-        if state and pd.notna(state):
-            states_html += f'<span class="trait-tag multi-state">{state}</span>'
+    # Create service tags
+    services_html = ""
+    if nurse_services and nurse_services != "None specified":
+        services = [service.strip() for service in nurse_services.split(',')]
+        for service in services:
+            if service:
+                services_html += f'<span class="service-badge">{service}</span> '
     
-    # Display traits
-    traits_html = ""
-    for trait in traits:
-        if trait.strip():
-            traits_html += f'<span class="trait-tag">{trait.strip()}</span>'
+    # Display state info with special style for California
+    state_html = f'<span class="trait-tag state-tag">{nurse_state}</span>'
     
-    # Display preferences
-    prefs_html = ""
-    for pref in preferences:
-        if pref.strip():
-            prefs_html += f'<span class="preference-tag">{pref.strip()}</span>'
+    # Add California restriction warning if applicable
+    ca_restriction = ""
+    if nurse_state.upper() == "CA":
+        ca_restriction = """
+        <div class="state-restrictions">
+            <strong>California Restriction:</strong> This nurse can only be matched with medical directors in California due to state licensing requirements.
+        </div>
+        """
     
     st.markdown(f"""
-    <div class="md-info">
-        <div class="md-detail">
-            <h4>States</h4>
-            {states_html if states_html else "No state information available"}
+    <div class="nurse-info">
+        <div class="nurse-detail">
+            <h4>License & Experience</h4>
+            <p><strong>License:</strong> {nurse_license}</p>
+            <p><strong>Experience:</strong> {nurse_experience}</p>
         </div>
-        <div class="md-detail">
-            <h4>Personality Traits</h4>
-            {traits_html if traits_html else "No traits information available"}
+        <div class="nurse-detail">
+            <h4>Location</h4>
+            {state_html}
+            {ca_restriction}
         </div>
-        <div class="md-detail">
-            <h4>Preferences</h4>
-            {prefs_html if prefs_html else "No preferences specified"}
+        <div class="nurse-detail">
+            <h4>Services</h4>
+            {services_html if services_html else "No services specified"}
         </div>
     </div>
     """, unsafe_allow_html=True)
@@ -998,14 +1191,15 @@ else:
     claude_api_key = os.getenv("ANTHROPIC_API_KEY", "")
     
     # Search options
-    st.markdown("<h2 class='subheader'>Find Matches</h2>", unsafe_allow_html=True)
+    st.markdown("<h2 class='subheader'>Find MD Matches for Nurses</h2>", unsafe_allow_html=True)
     
     search_type = st.radio(
         "Search by:",
-        ("Medical Director", "Nurse", "Manual Entry"),
+        ("Nurse", "Medical Director", "Manual Entry"),
         horizontal=True
     )
     
+    # Convert the search type to a simpler format
     # Convert the search type to a simpler format
     search_type_key = {
         "Medical Director": "md",
@@ -1029,7 +1223,75 @@ else:
             
             if not doctor_row.empty:
                 doctor = doctor_row.iloc[0]
-                display_md_details(doctor)
+                
+                # Display doctor details
+                doctor_states = doctor.get('States List', [])
+                if not doctor_states and 'Residing State  (Lives In)' in doctor:
+                    doctor_states = [doctor.get('Residing State  (Lives In)', '')]
+                    
+                traits = extract_personality_traits(doctor.get('Personality Traits', ''))
+                preferences = extract_md_preferences(doctor.get('MD Preferences', ''))
+                
+                # Create HTML tags for display
+                states_html = ""
+                for state in doctor_states:
+                    if state and pd.notna(state):
+                        state_class = "trait-tag state-tag"
+                        if state.upper() == "CA":
+                            state_class += " warning-tag"
+                        states_html += f'<span class="{state_class}">{state}</span> '
+                
+                traits_html = ""
+                for trait in traits:
+                    if trait.strip():
+                        traits_html += f'<span class="trait-tag">{trait.strip()}</span> '
+                
+                prefs_html = ""
+                for pref in preferences:
+                    if pref.strip():
+                        prefs_html += f'<span class="preference-tag">{pref.strip()}</span> '
+                
+                # Display capacity information
+                capacity_html = ""
+                np_capacity = doctor.get('NP Capacity', 0)
+                rn_capacity = doctor.get('RN Capacity', 0)
+                capacity_status = doctor.get('Capacity Status', '')
+                
+                capacity_html += f'<span class="trait-tag capacity-tag">NP Capacity: {np_capacity}</span> '
+                capacity_html += f'<span class="trait-tag capacity-tag">RN Capacity: {rn_capacity}</span> '
+                
+                if "CA" in [s.upper() for s in doctor_states if s]:
+                    ca_restriction = """
+                    <div class="state-restrictions">
+                        <strong>California Restriction:</strong> This medical director can only supervise nurses in California due to state licensing requirements.
+                    </div>
+                    """
+                else:
+                    ca_restriction = ""
+                
+                st.markdown(f"""
+                <div class="nurse-info">
+                    <div class="nurse-detail">
+                        <h4>States</h4>
+                        {states_html}
+                        {ca_restriction}
+                    </div>
+                    <div class="nurse-detail">
+                        <h4>Capacity</h4>
+                        {capacity_html}
+                        <p>{capacity_status}</p>
+                    </div>
+                    <div class="nurse-detail">
+                        <h4>Personality</h4>
+                        {traits_html if traits_html else "No traits specified"}
+                    </div>
+                    <div class="nurse-detail">
+                        <h4>Preferences</h4>
+                        {prefs_html if prefs_html else "No preferences specified"}
+                    </div>
+                </div>
+                """, unsafe_allow_html=True)
+                
         
         # Add specific filtering criteria
         st.markdown("<h3 class='subheader'>Nurse Preference Filters</h3>", unsafe_allow_html=True)
@@ -1045,7 +1307,19 @@ else:
                 license_filter = st.selectbox("License Type:", ["Any", "RN", "NP", "PA"])
             
             with col3:
-                location_preference = st.radio("Location Priority:", ["Same State Only", "Nearby States Acceptable", "Any Location"])
+                # Determine location options based on doctor state
+                if selected_doctor and not doctor_row.empty:
+                    doctor_states = doctor_row.iloc[0].get('States List', [])
+                    if not doctor_states and 'Residing State  (Lives In)' in doctor_row.iloc[0]:
+                        doctor_states = [doctor_row.iloc[0].get('Residing State  (Lives In)', '')]
+                    
+                    if "CA" in [s.upper() for s in doctor_states if s]:
+                        st.info("California medical directors can only supervise California nurses.")
+                        location_preference = "Same State Only"
+                    else:
+                        location_preference = st.radio("Location Priority:", ["Same State Only", "Nearby States Acceptable", "Any Location"])
+                else:
+                    location_preference = st.radio("Location Priority:", ["Same State Only", "Nearby States Acceptable", "Any Location"])
             
             st.markdown('</div>', unsafe_allow_html=True)
         
@@ -1083,12 +1357,16 @@ else:
                             matches = json.loads(response)
                             
                             # Display matches
-                            st.markdown(f"<h3>Top Matches for {selected_doctor}</h3>", unsafe_allow_html=True)
+                            st.markdown(f"<h3>Top Nurse Matches for {selected_doctor}</h3>", unsafe_allow_html=True)
                             
                             for match in matches.get("matches", []):
                                 # Determine score color class
                                 score = float(match['match_score'])
                                 score_class = "high-score" if score >= 8.0 else "medium-score" if score >= 6.0 else "low-score"
+                                
+                                license_html = ""
+                                if 'license_type' in match:
+                                    license_html = f"<p><strong>License:</strong> {match['license_type']}</p>"
                                 
                                 st.markdown(
                                     f"""<div class="match-card">
@@ -1097,6 +1375,7 @@ else:
                                         <div class="compatibility-score {score_class}">{match['match_score']}</div>
                                     </div>
                                     <p><strong>Contact:</strong> {match['email']}</p>
+                                    {license_html}
                                     <div class="match-reason">
                                         <p><strong>Why this match works:</strong> {match['reasoning']}</p>
                                     </div>
@@ -1111,6 +1390,19 @@ else:
         # Get a list of all nurses for the dropdown
         nurse_names = [str(row['Ticket Number Counter']) for _, row in nurses_df.iterrows() if pd.notna(row['Ticket Number Counter'])]
         selected_nurse = st.selectbox("Select Nurse:", [""] + sorted(nurse_names))
+        
+        # If a nurse is selected, show their details
+        if selected_nurse:
+            nurse_row = nurses_df[
+                nurses_df.apply(
+                    lambda row: pd.notna(row['Ticket Number Counter']) and selected_nurse.lower() in str(row['Ticket Number Counter']).lower(),
+                    axis=1
+                )
+            ]
+            
+            if not nurse_row.empty:
+                nurse = nurse_row.iloc[0]
+                display_nurse_details(nurse)
         
         # Add specific filtering criteria
         st.markdown("<h3 class='subheader'>MD Preference Filters</h3>", unsafe_allow_html=True)
@@ -1131,12 +1423,22 @@ else:
                     ["Any", "Hands-on/Collaborative", "Autonomous/Hands-off"]
                 )
             
-            location_preference = st.radio("Location Priority:", ["Same State Only", "Nearby States Acceptable", "Any Location"])
+            # Determine location options based on nurse state
+            if selected_nurse and not nurse_row.empty:
+                nurse_state = str(nurse_row.iloc[0]['State (MedSpa Premise)']).upper() if pd.notna(nurse_row.iloc[0]['State (MedSpa Premise)']) else "Unknown"
+                
+                if nurse_state == "CA":
+                    st.info("California nurses can only be matched with California medical directors due to state requirements.")
+                    location_preference = "Same State Only"
+                else:
+                    location_preference = st.radio("Location Priority:", ["Same State Only", "Nearby States Acceptable", "Any Location"])
+            else:
+                location_preference = st.radio("Location Priority:", ["Same State Only", "Nearby States Acceptable", "Any Location"])
             
             st.markdown('</div>', unsafe_allow_html=True)
         
-        service_requirements = st.text_area("Specific Service Requirements:", height=100, 
-                                       placeholder="E.g., Must be experienced with Botox, looking for mentor in fillers, etc.")
+        service_requirements = st.text_area("Specific Requirements or Preferences:", height=100, 
+                                       placeholder="E.g., Looking for a mentor in fillers, prefer someone with teaching experience, etc.")
         
         if selected_nurse and st.button("Find Matching Medical Directors"):
             if not claude_api_key:
@@ -1169,7 +1471,7 @@ else:
                             matches = json.loads(response)
                             
                             # Display matches
-                            st.markdown(f"<h3>Top Matches for {selected_nurse}</h3>", unsafe_allow_html=True)
+                            st.markdown(f"<h3>Top Medical Director Matches for {selected_nurse}</h3>", unsafe_allow_html=True)
                             
                             for match in matches.get("matches", []):
                                 # Determine score color class
@@ -1183,6 +1485,7 @@ else:
                                         <div class="compatibility-score {score_class}">{match['match_score']}</div>
                                     </div>
                                     <p><strong>Contact:</strong> {match['email']}</p>
+                                    <p><strong>Capacity:</strong> {match.get('capacity_status', 'Available')}</p>
                                     <div class="match-reason">
                                         <p><strong>Why this match works:</strong> {match['reasoning']}</p>
                                     </div>
@@ -1196,13 +1499,12 @@ else:
     else:  # Manual entry
         st.markdown("""
         <div class="explanation">
-            Enter information about the doctor or nurse you want to match. Include details like:
+            Enter information about the nurse you want to match. Include details like:
             <ul>
-                <li>Name and role (MD, RN, NP)</li>
-                <li>State/location</li>
+                <li>Name and license type (RN, NP)</li>
+                <li>State/location (especially important for California nurses)</li>
                 <li>Experience level</li>
                 <li>Services offered/interested in</li>
-                <li>Personality traits</li>
                 <li>Any special requirements or notes</li>
             </ul>
         </div>
@@ -1211,15 +1513,15 @@ else:
         # Add more specific options for manual entry
         col1, col2 = st.columns(2)
         with col1:
-            person_type = st.radio("This person is a:", ["Unknown", "Medical Director", "Nurse"])
+            person_type = st.radio("This person is a:", ["Nurse", "Unknown"])
         
         user_input = st.text_area("Enter professional information:", height=150, 
-                                placeholder="e.g., Dr. Smith is a younger physician in California who specializes in aesthetics. Communicative and responsive, prefers working with experienced nurses.")
+                                placeholder="e.g., Jane Smith is an RN in California with 3 years of experience in Botox and fillers. She's looking for a mentor who can provide hands-on training.")
         
         matching_priorities = st.text_area(
             "Specific matching priorities:", 
             height=100,
-            placeholder="E.g., Must be in same state, looking for someone with Botox experience, needs collaborative personality, etc."
+            placeholder="E.g., Must be in same state, looking for experienced MD with teaching experience, prefers collaborative style, etc."
         )
         
         if user_input and st.button("Find Matches"):
@@ -1228,7 +1530,7 @@ else:
             else:
                 with st.spinner("Finding the best matches..."):
                     prompt, error = create_claude_prompt(
-                        search_type_key, 
+                        "manual", 
                         user_input, 
                         doctors_df, 
                         nurses_df,
@@ -1259,6 +1561,10 @@ else:
                                 score = float(match['match_score'])
                                 score_class = "high-score" if score >= 8.0 else "medium-score" if score >= 6.0 else "low-score"
                                 
+                                capacity_html = ""
+                                if person_type.lower() == "nurse" and 'capacity_status' in match:
+                                    capacity_html = f"<p><strong>Capacity:</strong> {match['capacity_status']}</p>"
+                                
                                 st.markdown(
                                     f"""<div class="match-card">
                                     <div style="display: flex; justify-content: space-between; align-items: center;">
@@ -1266,6 +1572,7 @@ else:
                                         <div class="compatibility-score {score_class}">{match['match_score']}</div>
                                     </div>
                                     <p><strong>Contact:</strong> {match['email']}</p>
+                                    {capacity_html}
                                     <div class="match-reason">
                                         <p><strong>Why this match works:</strong> {match['reasoning']}</p>
                                     </div>
@@ -1277,21 +1584,26 @@ else:
                             st.text(response)
     
     # Explanation of how it works
-    with st.expander("How the Claude AI Matching System Works"):
+    with st.expander("How the Moxie Matching System Works"):
         st.markdown("""
-        This enhanced matching system uses Claude AI to intelligently match medical directors with nurses based on multiple factors:
+        This specialized matching system uses Claude AI to intelligently match nurses with appropriate medical directors based on critical factors:
         
-        1. **Location Matching**: The system prioritizes professionals in the same state to ensure licensing compatibility and convenience.
+        1. **State Licensing Requirements**: The system strictly enforces state licensing rules:
+           - California nurses can ONLY be matched with California medical directors
+           - Other states prioritize same-state matches but allow nearby states when appropriate
         
-        2. **Experience Level Compatibility**: The system considers the experience levels of both professionals, often matching experienced doctors with newer nurses who need mentorship.
+        2. **Capacity Verification**: The system checks each medical director's capacity:
+           - Verifies capacity specifically for the nurse's license type (RN or NP)
+           - Never suggests matches with medical directors who are at capacity
+           - Clearly indicates each MD's current capacity status
         
-        3. **Personality Trait Analysis**: The system analyzes the personality traits and work styles of medical directors to find complementary matches with nurses.
+        3. **Experience Level Compatibility**: The system considers the experience levels of both professionals, matching nurses with appropriate mentors or peers.
         
-        4. **Preference Respect**: The system takes into account specific preferences of medical directors (e.g., license types they're willing to supervise).
+        4. **Personality Trait Analysis**: The system analyzes the personality traits and work styles of medical directors to find complementary matches with nurses.
         
         5. **Service Alignment**: The system analyzes the services provided by nurses and looks for doctors with relevant expertise.
         
-        6. **Detailed Reasoning**: For each match, the system provides a comprehensive explanation that specifically highlights personality compatibility and professional synergies.
+        6. **Detailed Reasoning**: For each match, the system provides a comprehensive explanation highlighting state compatibility, capacity availability, and professional synergies.
         
         7. **Match Score**: The system provides a score out of 10 with detailed reasoning to explain why each match works well.
         
@@ -1299,6 +1611,7 @@ else:
         
         - Results are cached to improve performance and reduce API usage
         - System automatically switches to a faster AI model during high demand periods
-        - Smart filtering analyzes professional attributes and prioritizes the best matches
-        - Trait-based matching goes beyond basic location and license type compatibility
+        - Smart filtering prioritizes state compliance and capacity availability first
+        - Clear flagging of state restrictions for California providers
+        - Transparent capacity information for each medical director
         """)
