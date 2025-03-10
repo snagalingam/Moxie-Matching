@@ -1120,24 +1120,6 @@ def display_nurse_details(nurse):
         </div>
         """
     
-    st.markdown(f"""
-    <div class="nurse-info">
-        <div class="nurse-detail">
-            <h4>License & Experience</h4>
-            <p><strong>License:</strong> {nurse_license}</p>
-            <p><strong>Experience:</strong> {nurse_experience}</p>
-        </div>
-        <div class="nurse-detail">
-            <h4>Location</h4>
-            {state_html}
-            {ca_restriction}
-        </div>
-        <div class="nurse-detail">
-            <h4>Services</h4>
-            {services_html if services_html else "No services specified"}
-        </div>
-    </div>
-    """, unsafe_allow_html=True)
 
 # Main application content
 doctors_df, nurses_df = load_data()
