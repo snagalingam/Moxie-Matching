@@ -228,7 +228,7 @@ def load_data():
         except FileNotFoundError:
             # If not found, create an empty dataframe with appropriate columns
             md_metadata_df = pd.DataFrame(columns=['First Name', 'Last Name', 'Email', 'Residing State  (Lives In)', 
-                                                  'MD Preferences', 'Personality Traits', 'Capacity Status'])
+                                                  'MD Preferences', 'Personality Traits'])
         
         # Process MD metadata
         # Handle First Name field - remove "Dr. " prefix if present
@@ -254,6 +254,10 @@ def load_data():
         md_metadata_df['Traits List'] = md_metadata_df['Personality Traits'].apply(
             lambda x: [trait.strip() for trait in str(x).split(',')] if isinstance(x, str) else []
         )
+        
+        # Add capacity information if it doesn't exist
+        if 'Capacity Status' not in md_metadata_df.columns:
+            md_metadata_df['Capacity Status'] = "Has capacity for 2 more NPs, Has capacity for 3 more RNs"
         
         # Extract capacity information
         md_metadata_df['NP Capacity'] = md_metadata_df['Capacity Status'].apply(
@@ -401,12 +405,11 @@ def load_data():
                 axis=1
             )
             
-            # If Capacity Status isn't there, create it from the NP and RN capacity
-            if 'Capacity Status' not in doctors_df.columns:
-                doctors_df['Capacity Status'] = doctors_df.apply(
-                    lambda row: create_capacity_status(row['NP Capacity'], row['RN Capacity']),
-                    axis=1
-                )
+            # Always create Capacity Status from the NP and RN capacity for consistency
+            doctors_df['Capacity Status'] = doctors_df.apply(
+                lambda row: create_capacity_status(row['NP Capacity'], row['RN Capacity']),
+                axis=1
+            )
             
         # If we still don't have metadata for doctors, use the metadata dataframe directly
         elif len(doctors_df) == 0 and len(md_metadata_df) > 0:
@@ -417,6 +420,15 @@ def load_data():
                 doctors_df['Create Date'] = '2023-01-01'  # Default date
             if 'Lifecycle Stage' not in doctors_df.columns:
                 doctors_df['Lifecycle Stage'] = 'Medical Director Onboarded'
+            if 'NP Capacity' not in doctors_df.columns:
+                doctors_df['NP Capacity'] = 2  # Default capacity
+            if 'RN Capacity' not in doctors_df.columns:
+                doctors_df['RN Capacity'] = 3  # Default capacity
+            if 'Capacity Status' not in doctors_df.columns:
+                doctors_df['Capacity Status'] = doctors_df.apply(
+                    lambda row: create_capacity_status(row['NP Capacity'], row['RN Capacity']),
+                    axis=1
+                )
         
         return doctors_df, nurses_df
         
