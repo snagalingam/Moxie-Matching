@@ -1159,7 +1159,7 @@ def display_nurse_details(nurse):
     margin-right: 8px;
 }}
 
-.location-badge {{
+.trait-tag.state-tag {{
     display: inline-block;
     background-color: #f0ad4e;
     color: white;
@@ -1177,7 +1177,7 @@ def display_nurse_details(nurse):
     </div>
     <div class="nurse-detail">
         <h4>Location</h4>
-        <span class="location-badge">{state}</span>
+        {state_html}
         {ca_restriction or ''}
     </div>
     <div class="nurse-detail">
