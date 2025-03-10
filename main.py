@@ -1504,6 +1504,42 @@ else:
                                 score = float(match['match_score'])
                                 score_class = "high-score" if score >= 8.0 else "medium-score" if score >= 6.0 else "low-score"
                                 
+                                # Find the MD in the dataframe to get their traits and state
+                                md_name = match['name']
+                                md_row = doctors_df[
+                                    doctors_df.apply(
+                                        lambda row: md_name.lower() in f"{row['First Name']} {row['Last Name']}".lower(), 
+                                        axis=1
+                                    )
+                                ]
+                                
+                                # Get MD traits and location if available
+                                traits_html = ""
+                                states_html = ""
+                                
+                                if not md_row.empty:
+                                    md = md_row.iloc[0]
+                                    traits = extract_personality_traits(md.get('Personality Traits', ''))
+                                    
+                                    # Get states
+                                    states = md.get('States List', [])
+                                    if not states and 'Residing State  (Lives In)' in md:
+                                        states = [md.get('Residing State  (Lives In)', '')]
+                                    
+                                    # Create state tags
+                                    for state in states:
+                                        if state and pd.notna(state):
+                                            state_class = "trait-tag state-tag"
+                                            if state.upper() == "CA":
+                                                state_class += " warning-tag"
+                                            states_html += f'<span class="{state_class}">{state}</span> '
+                                    
+                                    # Create trait tags
+                                    for trait in traits:
+                                        if trait.strip():
+                                            traits_html += f'<span class="trait-tag">{trait.strip()}</span> '
+                                
+                                # Build the match card with traits and fixed location included
                                 st.markdown(
                                     f"""<div class="match-card">
                                     <div style="display: flex; justify-content: space-between; align-items: center;">
@@ -1512,6 +1548,16 @@ else:
                                     </div>
                                     <p><strong>Contact:</strong> {match['email']}</p>
                                     <p><strong>Capacity:</strong> {match.get('capacity_status', 'Available')}</p>
+                                    <div class="nurse-info">
+                                        <div class="nurse-detail">
+                                            <h4>Location</h4>
+                                            {states_html if states_html else "Location not specified"}
+                                        </div>
+                                        <div class="nurse-detail">
+                                            <h4>Personality Traits</h4>
+                                            {traits_html if traits_html else "No traits specified"}
+                                        </div>
+                                    </div>
                                     <div class="match-reason">
                                         <p><strong>Why this match works:</strong> {match['reasoning']}</p>
                                     </div>
@@ -1587,9 +1633,61 @@ else:
                                 score = float(match['match_score'])
                                 score_class = "high-score" if score >= 8.0 else "medium-score" if score >= 6.0 else "low-score"
                                 
+                                # If matching with a doctor, try to find their traits and location
+                                traits_html = ""
+                                states_html = ""
+                                
+                                if person_type.lower() == "nurse":
+                                    # Find the MD in the dataframe
+                                    md_name = match['name']
+                                    md_row = doctors_df[
+                                        doctors_df.apply(
+                                            lambda row: md_name.lower() in f"{row['First Name']} {row['Last Name']}".lower(), 
+                                            axis=1
+                                        )
+                                    ]
+                                    
+                                    if not md_row.empty:
+                                        md = md_row.iloc[0]
+                                        traits = extract_personality_traits(md.get('Personality Traits', ''))
+                                        
+                                        # Get states
+                                        states = md.get('States List', [])
+                                        if not states and 'Residing State  (Lives In)' in md:
+                                            states = [md.get('Residing State  (Lives In)', '')]
+                                        
+                                        # Create state tags
+                                        for state in states:
+                                            if state and pd.notna(state):
+                                                state_class = "trait-tag state-tag"
+                                                if state.upper() == "CA":
+                                                    state_class += " warning-tag"
+                                                states_html += f'<span class="{state_class}">{state}</span> '
+                                        
+                                        # Create trait tags
+                                        for trait in traits:
+                                            if trait.strip():
+                                                traits_html += f'<span class="trait-tag">{trait.strip()}</span> '
+                                
                                 capacity_html = ""
                                 if person_type.lower() == "nurse" and 'capacity_status' in match:
                                     capacity_html = f"<p><strong>Capacity:</strong> {match['capacity_status']}</p>"
+                                
+                                # Add location and traits sections if available
+                                trait_location_html = ""
+                                if traits_html or states_html:
+                                    trait_location_html = f"""
+                                    <div class="nurse-info">
+                                        <div class="nurse-detail">
+                                            <h4>Location</h4>
+                                            {states_html if states_html else "Location not specified"}
+                                        </div>
+                                        <div class="nurse-detail">
+                                            <h4>Personality Traits</h4>
+                                            {traits_html if traits_html else "No traits specified"}
+                                        </div>
+                                    </div>
+                                    """
                                 
                                 st.markdown(
                                     f"""<div class="match-card">
@@ -1599,6 +1697,7 @@ else:
                                     </div>
                                     <p><strong>Contact:</strong> {match['email']}</p>
                                     {capacity_html}
+                                    {trait_location_html}
                                     <div class="match-reason">
                                         <p><strong>Why this match works:</strong> {match['reasoning']}</p>
                                     </div>
