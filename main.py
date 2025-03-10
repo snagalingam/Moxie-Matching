@@ -1119,7 +1119,64 @@ def display_nurse_details(nurse):
             <strong>California Restriction:</strong> This nurse can only be matched with medical directors in California due to state licensing requirements.
         </div>
         """
-    
+    st.markdown(f"""
+<style>
+.nurse-info {{
+    background-color: #f9f9f9;
+    border-radius: 12px;
+    padding: 20px;
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+    max-width: 600px;
+    margin: 0 auto;
+    font-family: Arial, sans-serif;
+}}
+
+.nurse-detail {{
+    margin-bottom: 15px;
+    padding-bottom: 15px;
+    border-bottom: 1px solid #e0e0e0;
+}}
+
+.nurse-detail:last-child {{
+    border-bottom: none;
+}}
+
+.nurse-detail h4 {{
+    color: #2c3e50;
+    margin-bottom: 10px;
+    font-size: 18px;
+    border-bottom: 2px solid #3498db;
+    padding-bottom: 5px;
+}}
+
+.nurse-detail p {{
+    margin: 5px 0;
+    color: #34495e;
+}}
+
+.nurse-detail strong {{
+    color: #2980b9;
+    margin-right: 8px;
+}}
+</style>
+
+<div class="nurse-info">
+    <div class="nurse-detail">
+        <h4>License & Experience</h4>
+        <p><strong>License:</strong> {nurse_license}</p>
+        <p><strong>Experience:</strong> {nurse_experience}</p>
+    </div>
+    <div class="nurse-detail">
+        <h4>Location</h4>
+        {state_html}
+        {ca_restriction}
+    </div>
+    <div class="nurse-detail">
+        <h4>Services</h4>
+        {services_html if services_html else "No services specified"}
+    </div>
+</div>
+""", unsafe_allow_html=True)
 
 # Main application content
 doctors_df, nurses_df = load_data()
