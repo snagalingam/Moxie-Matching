@@ -1119,7 +1119,7 @@ def display_nurse_details(nurse):
             <strong>California Restriction:</strong> This nurse can only be matched with medical directors in California due to state licensing requirements.
         </div>
         """
-    st.markdown(f"""
+   st.markdown(f"""
 <style>
 .nurse-info {{
     background-color: #f9f9f9;
@@ -1177,9 +1177,10 @@ def display_nurse_details(nurse):
     </div>
     <div class="nurse-detail">
         <h4>Location</h4>
-        {state_html}
+        {state_html or ''}
         {ca_restriction or ''}
     </div>
+</div>
 """, unsafe_allow_html=True)
 # Main application content
 doctors_df, nurses_df = load_data()
