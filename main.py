@@ -1,4 +1,24 @@
-import streamlit as st
+# Create nurses dataframe directly from the provided data or from hubspot CSV
+        try:
+            nurses_df = pd.read_csv('hubspot_moxie.csv')
+            # Filter to only relevant columns
+            relevant_cols = [
+                'Ticket Number Counter', 'Bird Eats Bug Email', 'Provider License Type',
+                'Experience Level  ', 'State (MedSpa Premise)', 'Services Provided',
+                'Addt\'l Service Notes'
+            ]
+            # Use columns that are actually in the dataframe
+            available_cols = [col for col in relevant_cols if col in nurses_df.columns]
+            nurses_df = nurses_df[available_cols].dropna(subset=['Bird Eats Bug Email'])
+        except FileNotFoundError:
+            # Create a minimal empty dataframe with required columns
+            st.error("No nurse data file found. Please upload the hubspot_moxie.csv file.")
+            nurses_df = pd.DataFrame(columns=[
+                'Ticket Number Counter', 'Bird Eats Bug Email', 'Provider License Type',
+                'Experience Level  ', 'State (MedSpa Premise)', 'Services Provided',
+                'Addt\'l Service Notes'
+            ])
+                 import streamlit as st
 import pandas as pd
 import os
 import json
@@ -1399,9 +1419,38 @@ else:
                             st.text(response)
     
     elif search_type_key == "nurse":
-        # Get a list of all nurses for the dropdown
-        nurse_names = [str(row['Ticket Number Counter']) for _, row in nurses_df.iterrows() if pd.notna(row['Ticket Number Counter'])]
-        selected_nurse = st.selectbox("Select Nurse:", [""] + sorted(nurse_names))
+        # Try to read column names in a case-insensitive way
+        def get_column_case_insensitive(df, column_name):
+            """Get the actual case of a column name regardless of case."""
+            for col in df.columns:
+                if col.lower() == column_name.lower():
+                    return col
+            return None
+        
+        # Find the actual column name for 'Ticket Number Counter'
+        nurse_name_col = get_column_case_insensitive(nurses_df, 'Ticket Number Counter')
+        if not nurse_name_col:
+            st.error("Column 'Ticket Number Counter' not found in the data. Available columns: " + ", ".join(nurses_df.columns))
+            nurse_names = []
+        else:
+            # Extract nurse names properly
+            nurse_names = []
+            for _, row in nurses_df.iterrows():
+                if pd.notna(row[nurse_name_col]):
+                    name = str(row[nurse_name_col]).strip()
+                    if name:  # Only add non-empty names
+                        nurse_names.append(name)
+        
+        # Display the dropdown
+        if not nurse_names:
+            st.warning("No nurse names found in the data. Please check your data file.")
+            selected_nurse = st.selectbox("Select Nurse:", ["No nurses available"])
+            st.stop()  # Stop execution if no nurses are available
+        else:
+            # Display how many names were found
+            st.info(f"Found {len(nurse_names)} nurses in the data.")
+            # Sort and add a blank option at the beginning
+            selected_nurse = st.selectbox("Select Nurse:", [""] + sorted(nurse_names))
         
         # If a nurse is selected, show their details
         if selected_nurse:
