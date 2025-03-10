@@ -1103,7 +1103,7 @@ def display_nurse_details(nurse):
     # Create service tags
     services_html = ""
     if nurse_services and nurse_services != "None specified":
-        services = [service.strip() for service in nurse_services.split(',')]
+        services = [service.strip() for service in nurse_services.split(';' if ';' in nurse_services else ',')]
         for service in services:
             if service:
                 services_html += f'<span class="service-badge">{service}</span> '
