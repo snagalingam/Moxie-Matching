@@ -1180,7 +1180,6 @@ def display_nurse_details(nurse):
         {state_html}
         {ca_restriction or ''}
     </div>
-</div>
 """, unsafe_allow_html=True)
 # Main application content
 doctors_df, nurses_df = load_data()
