@@ -119,6 +119,9 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
+########################################################
+# Password screen
+########################################################
 # Initialize session state for password
 if 'password_correct' not in st.session_state:
     st.session_state['password_correct'] = False
@@ -127,7 +130,7 @@ if 'password_correct' not in st.session_state:
 if not st.session_state['password_correct']:
     st.markdown("""
     <div class="password-container">
-        <h2 class="password-header">Moxie Matching Feedback Log</h2>
+        <h2 class="password-header">Moxie Provider-MD Matching System</h2>
         <p>Please enter the password to access the system:</p>
     </div>
     """, unsafe_allow_html=True)
@@ -145,7 +148,9 @@ if not st.session_state['password_correct']:
     # Stop execution here if password is incorrect
     st.stop()
 
-# Main application content
+########################################################
+# Main application (only runs if password is correct)
+########################################################
 st.markdown("<h1 class='main-header'>Moxie Matching Feedback Log</h1>", unsafe_allow_html=True)
 
 # Feedback data file path
