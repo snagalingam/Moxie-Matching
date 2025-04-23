@@ -14,71 +14,91 @@ from prompt_utils import create_prompt
 # Helper functions
 ########################################################
 def clean_json_response(response):
+    """
+    Cleans the JSON response from the OpenAI API
+    """
     # Remove code fences if present
     response = re.sub(r"^```(?:json)?|```$", "", response.strip(), flags=re.MULTILINE)
     # Remove any leading/trailing whitespace again
     return response.strip()
 
-########################################################
-# Page config
-########################################################
-st.set_page_config(page_title="Moxie Provider-MD Matching", layout="wide")
-
-# Load external CSS
-with open('styles.css') as f:
-    st.markdown(f'<style>{f.read()}</style>', unsafe_allow_html=True)
-
-########################################################
-# Password screen
-########################################################
-# Initialize session state for password
-if 'password_correct' not in st.session_state:
-    st.session_state['password_correct'] = False
-
-# Simple password screen
-if not st.session_state['password_correct']:
-    st.markdown("""
-    <div class="password-container">
-        <h2 class="password-header">Moxie Provider-MD Matching System</h2>
-        <p>Please enter the password to access the system:</p>
-    </div>
-    """, unsafe_allow_html=True)
+def display_provider_details(provider):
+    """
+    Displays the provider details nicely formatted
+    """
+    ticket_name = str(provider['Ticket name'])
+    provider_email = str(provider['Bird Eats Bug Email'])
+    ticket_status = str(provider['Ticket status'])
+    priority = str(provider['Priority'])
+    kick_off_date = str(provider['Kick-Off Date'])
+    provider_license_type = str(provider['Provider License Type']) 
+    provider_experience_level = str(provider['Experience Level  '])
+    provider_state = str(provider['State (MedSpa Premise)']) 
+    provider_md_location_preference = get_clean_value(provider['MD Location Preference (state)'], "")
+    provider_services = get_clean_value(provider['Services Provided'], "None Specified") 
+    provider_future_services = get_clean_value(provider['FUTURE Services (if known)'], "")
+    provider_additional_services = get_clean_value(provider["Addt'l Service Notes"], "")
     
-    password = st.text_input("Password", type="password", key="password_input")
+    # Create service tags
+    services_html = generate_service_badges(provider_services)
+    future_services_html = generate_service_badges(provider_future_services)
     
-    if st.button("Login"):
-        # Hard-code the password check for simplicity
-        if password == "MoxieAI2025":
-            st.session_state['password_correct'] = True
-            st.experimental_rerun()
-        else:
-            st.error("Incorrect password. Please try again.")
+    # Display state info with special style for California
+    state_html = f'<span class="trait-tag state-tag">{provider_state}</span>'
     
-    # Stop execution here if password is incorrect
-    st.stop()
+    # Add California restriction warning if applicable
+    ca_restriction = ""
+    if provider_state == "California":
+        ca_restriction = """
+        <div class="state-restrictions">
+            <strong>California Restriction:</strong> This nurse can only be matched with medical directors in California due to state licensing requirements.
+        </div>
+        """
 
-########################################################
-# Main application (only runs if password is correct)
-########################################################
-# Get OpenAI API key from environment variable
-openai_api_key = os.getenv("OPENAI_API_KEY", "")
+    st.markdown(f"""
+        <div class="nurse-info">
+            <div class="nurse-detail">
+                <h4>{ticket_name}</h4>
+                <p><strong>Ticket Status:</strong> {ticket_status}</p>
+                <p><strong>Ticket Priority:</strong> {priority}</p>
+                <p><strong>Kick-Off Date:</strong> {kick_off_date}</p>
+                <p><strong>Email:</strong> {provider_email}</p>
+                <p><strong>License:</strong> {provider_license_type}</p>
+                <p><strong>Experience:</strong> {provider_experience_level}</p>
+                <p><strong>State:</strong> {state_html} {ca_restriction or ''}</p>
+                <p><strong>MD Location Preference:</strong> {provider_md_location_preference}</p>
+                <P><p><strong>Services:</strong> {services_html}</P>
+                <p><strong>Future Services:</strong> {future_services_html}</p>
+                <p><strong>Additional Notes:</strong> {provider_additional_services}</p>
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
 
-st.markdown("<h1 class='main-header'>Moxie Provider-MD Matching System</h1>", unsafe_allow_html=True)
-st.markdown("<div class='powered-by'>Powered by ChatGPT</div>", unsafe_allow_html=True)
+def generate_service_badges(service_string):
+    """
+    Converts a semicolon- or comma-separated string of services into HTML badge spans.
+    """
+    if service_string and service_string != "None specified":
+        delimiter = ';' if ';' in service_string else ','
+        services = [s.strip() for s in service_string.split(delimiter)]
+        return ' '.join(f'<span class="service-badge">{s}</span>' for s in services if s)
+    return ""
 
-# Load data
-@st.cache_data
-def cached_load_data():
-    return load_data()
+def get_clean_value(value, default="Unknown"):
+    """
+    Gets a clean value from a string, handling common formatting issues.
+    """
+    if pd.isna(value) or str(value).strip().lower() in {"n/a", "na", ""}:
+        return default
+    return str(value).strip()
 
-# Create a hash from the prompt for caching
-def get_prompt_hash(prompt):
-    return hashlib.md5(prompt.encode()).hexdigest()
-
-# Cache the Open API responses
-#@st.cache_data(ttl=3600)  # Cache for 1 hour
-def cached_openai_api(prompt_hash, prompt, openai_api_key):
-    return query_openai(prompt, openai_api_key)
+# Try to read column names in a case-insensitive way
+def get_column_case_insensitive(df, column_name):
+    """Get the actual case of a column name regardless of case."""
+    for col in df.columns:
+        if col.lower() == column_name.lower():
+            return col
+    return None
 
 # Function to call OpenAI API with fallback to GPT-3.5
 def query_openai(prompt, api_key, max_retries=2):
@@ -135,142 +155,96 @@ def query_openai(prompt, api_key, max_retries=2):
                 st.error(f"API error: {error_str}")
                 return {"error": f"API error: {error_str}"}
 
-# Display nurse information in a nice way
-def display_nurse_details(nurse):
-    nurse_name = str(nurse['Ticket Number Counter']) if pd.notna(nurse['Ticket Number Counter']) else "Unknown"
-    nurse_license = str(nurse['Provider License Type']) if pd.notna(nurse['Provider License Type']) else "Unknown"
-    nurse_experience = str(nurse['Experience Level  ']) if pd.notna(nurse['Experience Level  ']) else "Unknown"
-    nurse_state = str(nurse['State (MedSpa Premise)']) if pd.notna(nurse['State (MedSpa Premise)']) else "Unknown"
-    nurse_services = str(nurse['Services Provided']) if pd.notna(nurse['Services Provided']) else "None specified"
-    
-    # Create service tags
-    services_html = ""
-    if nurse_services and nurse_services != "None specified":
-        services = [service.strip() for service in nurse_services.split(';' if ';' in nurse_services else ',')]
-        for service in services:
-            if service:
-                services_html += f'<span class="service-badge">{service}</span> '
-    
-    # Display state info with special style for California
-    state_html = f'<span class="trait-tag state-tag">{nurse_state}</span>'
-    
-    # Add California restriction warning if applicable
-    ca_restriction = ""
-    if nurse_state.upper() == "CA":
-        ca_restriction = """
-        <div class="state-restrictions">
-            <strong>California Restriction:</strong> This nurse can only be matched with medical directors in California due to state licensing requirements.
-        </div>
-        """
-    st.markdown(f"""
-        <div class="nurse-info">
-            <div class="nurse-detail">
-                <h4>License & Experience</h4>
-                <p><strong>License:</strong> {nurse_license}</p>
-                <p><strong>Experience:</strong> {nurse_experience}</p>
-            </div>
-            <div class="nurse-detail">
-                <h4>Location</h4>
-                {state_html}
-                {ca_restriction or ''}
-            </div>
-        </div>
-        """, unsafe_allow_html=True)
+# Cache the Open API responses for 1 hour
+@st.cache_data(ttl=3600) 
+def cached_openai_api(prompt, openai_api_key):
+    return query_openai(prompt, openai_api_key)
 
 ########################################################
-# Main application content
+# Page config
 ########################################################
-# load and cache data
+st.set_page_config(page_title="Moxie Provider-MD Matching", layout="wide")
+
+# Load external CSS
+with open('styles.css') as f:
+    st.markdown(f'<style>{f.read()}</style>', unsafe_allow_html=True)
+
+########################################################
+# Password screen
+########################################################
+# Initialize session state for password
+if 'password_correct' not in st.session_state:
+    st.session_state['password_correct'] = False
+
+# Simple password screen
+if not st.session_state['password_correct']:
+    st.markdown("""
+    <div class="password-container">
+        <h2 class="password-header">Moxie Provider-MD Matching System</h2>
+        <p>Please enter the password to access the system:</p>
+    </div>
+    """, unsafe_allow_html=True)
+    
+    password = st.text_input("Password", type="password", key="password_input")
+    
+    if st.button("Login"):
+        # Hard-code the password check for simplicity
+        if password == "MoxieAI2025":
+            st.session_state['password_correct'] = True
+            st.experimental_rerun()
+        else:
+            st.error("Incorrect password. Please try again.")
+    
+    # Stop execution here if password is incorrect
+    st.stop()
+
+########################################################
+# Main application (only runs if password is correct)
+########################################################
+st.markdown("<h1 class='main-header'>Moxie Provider-MD Matching System</h1>", unsafe_allow_html=True)
+st.markdown("<div class='powered-by'>Powered by ChatGPT</div>", unsafe_allow_html=True)
+
+# Get OpenAI API key from environment variable
+openai_api_key = os.getenv("OPENAI_API_KEY", "")
+
+# Load and cache data
 @st.cache_data
-def cached_load_data():
-    return load_data()
+def load_data():
+    try: 
+        doctors_df = pd.read_csv('md_hubspot.csv')
+        providers_df = pd.read_csv('matching_tickets.csv')
+        return doctors_df, providers_df
+    
+    except Exception as e:
+        st.error(f"Error loading data: {e}")
+        return None, None 
 
-doctors_df, nurses_df = cached_load_data()
+doctors_df, providers_df = load_data()
 
-# error if data is not loaded
-if doctors_df is None or nurses_df is None:
-    st.error("Failed to load data. Please check the data files.")
+# Display error if data is not loaded
+if doctors_df is None:
+    st.error("Failed to load MD data. Please check the data files.")
+if providers_df is None:
+    st.error("Failed to load provider data. Please check the data files.")
 
-# Add specific filtering criteria
+# Select a provider to match
 st.markdown("<h3 class='subheader'>Provider Selection</h3><br>", unsafe_allow_html=True)
-# Try to read column names in a case-insensitive way
-def get_column_case_insensitive(df, column_name):
-    """Get the actual case of a column name regardless of case."""
-    for col in df.columns:
-        if col.lower() == column_name.lower():
-            return col
-    return None
 
-# Find nurse identifiers using multiple possible columns
-nurse_name_col = get_column_case_insensitive(nurses_df, 'Ticket Number Counter')
-nurse_email_col = get_column_case_insensitive(nurses_df, 'Bird Eats Bug Email')
+# Display how many tickets for matching were found
+st.info(f"Found {len(providers_df)} tickets for matching.")
 
-# Extract nurse identifiers, prioritizing names but falling back to emails
-nurse_identifiers = []
+# Display a dropdown with a blank option at the beginning
+selected_provider = st.selectbox("Select Provider:", [""] + sorted(providers_df["Ticket name"].dropna()))
 
-# Try different columns to find identifiers
-if nurse_email_col:  # First, collect emails since they're likely to be more reliable
-    for _, row in nurses_df.iterrows():
-        if pd.notna(row[nurse_email_col]):
-            email = str(row[nurse_email_col]).strip()
-            if email and '@' in email:  # Simple validation to ensure it's an email
-                nurse_identifiers.append(email)
-
-# If we also have names, prefer those but keep emails as fallback
-if nurse_name_col:
-    name_based_identifiers = []
-    for _, row in nurses_df.iterrows():
-        if pd.notna(row[nurse_name_col]):
-            name = str(row[nurse_name_col]).strip()
-            if name:  # Only add non-empty names
-                name_based_identifiers.append(name)
-    
-    # If we have names, use those instead of emails
-    if name_based_identifiers:
-        nurse_identifiers = name_based_identifiers
-
-# Display the dropdown
-if not nurse_identifiers:
-    st.warning("No nurse identifiers found in the data. Please check your data file's 'Ticket Number Counter' or 'Bird Eats Bug Email' columns.")
-    selected_nurse = st.selectbox("Select Nurse:", ["No nurses available"])
-    st.stop()  # Stop execution if no nurses are available
+# Filter the dataframe only if a provider is selected
+if selected_provider:
+    provider_data = providers_df[providers_df["Ticket name"] == selected_provider]
+    provider = provider_data.iloc[0]  
+    display_provider_details(provider) 
 else:
-    # Display how many nurses were found
-    st.info(f"Found {len(nurse_identifiers)} nurses in the data.")
-    # Sort and add a blank option at the beginning
-    selected_nurse = st.selectbox("Select Nurse:", [""] + sorted(nurse_identifiers))
+    provider = None
 
-# Find the selected nurse in the dataframe - checking both name and email columns
-if selected_nurse and selected_nurse != "No nurses available":
-    nurse_row = None
-    
-    # Try to find by name first
-    if nurse_name_col:
-        name_matches = nurses_df[
-            nurses_df.apply(
-                lambda row: pd.notna(row[nurse_name_col]) and selected_nurse.lower() in str(row[nurse_name_col]).lower(),
-                axis=1
-            )
-        ]
-        if not name_matches.empty:
-            nurse_row = name_matches
-    
-    # If not found by name, try email
-    if (nurse_row is None or nurse_row.empty) and nurse_email_col:
-        email_matches = nurses_df[
-            nurses_df.apply(
-                lambda row: pd.notna(row[nurse_email_col]) and selected_nurse.lower() in str(row[nurse_email_col]).lower(),
-                axis=1
-            )
-        ]
-        if not email_matches.empty:
-            nurse_row = email_matches
-    
-    if nurse_row is not None and not nurse_row.empty:
-        nurse = nurse_row.iloc[0]
-        display_nurse_details(nurse)
-
-# Add specific filtering criteria
+# Now look at the MDs to match with
 st.markdown("<h3 class='subheader'>MD Selection</h3><br>", unsafe_allow_html=True)
 # Display how many MDs were found
 st.info(f"Found {len(doctors_df)} medical directors in the data.")
@@ -291,10 +265,10 @@ with st.container():
         )
     
     # Determine location options based on nurse state
-    if selected_nurse and nurse_row is not None and not nurse_row.empty:
-        nurse_state = str(nurse_row.iloc[0]['State (MedSpa Premise)']).upper() if pd.notna(nurse_row.iloc[0]['State (MedSpa Premise)']) else "Unknown"
-        
-        if nurse_state == "CA":
+    if provider is not None:
+        provider_state = str(provider_data['State (MedSpa Premise)'].iloc[0]) 
+
+        if provider_state == "California":
             st.info("California nurses can only be matched with California medical directors due to state requirements.")
             location_preference = "Same State Only"
         else:
@@ -307,15 +281,14 @@ with st.container():
 service_requirements = st.text_area("Specific Requirements or Preferences:", height=100, 
                                 placeholder="E.g., Looking for a mentor in fillers, prefer someone with teaching experience, etc.")
 
-if selected_nurse and selected_nurse != "No nurses available" and st.button("Find Matching Medical Directors"):
+if provider is not None and st.button("Find Matching Medical Directors"):
     if not openai_api_key:
         st.error("API key is not configured. Please set the OPENAI_API_KEY environment variable.")
     else:
         with st.spinner("Finding the best medical director matches..."):
-            prompt, error = create_prompt(
-                selected_nurse, 
+            prompt, error = create_prompt( 
                 doctors_df, 
-                nurses_df,
+                provider,
                 filters={
                     "md_age": md_age if md_age != "Any" else None,
                     "interaction_style": interaction_style if interaction_style != "Any" else None,
@@ -323,18 +296,14 @@ if selected_nurse and selected_nurse != "No nurses available" and st.button("Fin
                     "service_requirements": service_requirements
                 }
             )
-            
+
             if error:
                 st.error(error)
             else:
-                # Create a hash for caching
-                prompt_hash = get_prompt_hash(prompt)
-                
-                # Call OpenAI API with caching
-                response = cached_openai_api(prompt_hash, prompt, openai_api_key)
-                
+                response = query_openai(prompt, openai_api_key)
                 matches = None
                 
+                # Format the responses
                 if isinstance(response, dict):
                     matches = response
                 elif isinstance(response, str):
@@ -351,7 +320,7 @@ if selected_nurse and selected_nurse != "No nurses available" and st.button("Fin
 
                 if matches:    
                     # Display matches
-                    st.markdown(f"<h3>Top Medical Director Matches for {selected_nurse}</h3>", unsafe_allow_html=True)
+                    st.markdown(f"<h3>Top Medical Director Matches for {provider_data}</h3>", unsafe_allow_html=True)
                     
                     for match in matches.get("matches", []):
                         # Determine score color class
@@ -418,52 +387,3 @@ if selected_nurse and selected_nurse != "No nurses available" and st.button("Fin
                             </div>""",
                             unsafe_allow_html=True
                         )
-
-def process_matches(nurses_df, medical_directors_df):
-    try:
-        # Create the prompt for matching
-        prompt = create_prompt(nurses_df, medical_directors_df)
-        
-        # Get the API key from session state
-        api_key = st.session_state.get('openai_api_key')
-        if not api_key:
-            st.error("Please enter your OpenAI API key first.")
-            return None
-        
-        # Get the response from OpenAI
-        response = query_openai(prompt, api_key)
-        
-        # Try to parse the response as JSON
-        try:
-            matches = response if isinstance(response, dict) else json.loads(response)
-            # Validate the structure of the matches
-            if not isinstance(matches, dict):
-                st.error("Invalid response format: expected a dictionary")
-                return None
-                
-            if 'matches' not in matches:
-                st.error("Invalid response format: missing 'matches' key")
-                return None
-                
-            if not isinstance(matches['matches'], list):
-                st.error("Invalid response format: 'matches' must be a list")
-                return None
-                
-            # Validate each match in the list
-            for match in matches['matches']:
-                required_fields = ['name', 'email', 'match_score', 'reasoning']
-                missing_fields = [field for field in required_fields if field not in match]
-                if missing_fields:
-                    st.error(f"Invalid match format: missing required fields: {', '.join(missing_fields)}")
-                    return None
-                    
-            return matches
-            
-        except json.JSONDecodeError as e:
-            st.error(f"Error parsing JSON response: {str(e)}")
-            st.text(f"Raw response: {response}")
-            return None
-            
-    except Exception as e:
-        st.error(f"An error occurred: {str(e)}")
-        return None
