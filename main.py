@@ -169,221 +169,210 @@ st.set_page_config(page_title="Moxie Provider-MD Matching", layout="wide")
 with open('styles.css') as f:
     st.markdown(f'<style>{f.read()}</style>', unsafe_allow_html=True)
 
-########################################################
-# Password screen
-########################################################
-# Initialize session state for password
-if 'password_correct' not in st.session_state:
-    st.session_state['password_correct'] = False
-
-# Simple password screen
-if not st.session_state['password_correct']:
-    st.markdown("""
-    <div class="password-container">
-        <h2 class="password-header">Moxie Provider-MD Matching System</h2>
-        <p>Please enter the password to access the system:</p>
-    </div>
-    """, unsafe_allow_html=True)
-    
-    password = st.text_input("Password", type="password", key="password_input")
-    
-    if st.button("Login"):
-        # Hard-code the password check for simplicity
-        if password == "MoxieAI2025":
-            st.session_state['password_correct'] = True
-            st.experimental_rerun()
-        else:
-            st.error("Incorrect password. Please try again.")
-    
-    # Stop execution here if password is incorrect
-    st.stop()
-
-########################################################
-# Main application (only runs if password is correct)
-########################################################
 st.markdown("<h1 class='main-header'>Moxie Provider-MD Matching System</h1>", unsafe_allow_html=True)
 st.markdown("<div class='powered-by'>Powered by ChatGPT</div>", unsafe_allow_html=True)
 
-# Get OpenAI API key from environment variable
-openai_api_key = os.getenv("OPENAI_API_KEY", "")
+########################################################
+# Require login
+########################################################
+def login_screen():
+    st.markdown("""
+        <div>
+            <h2 class="private-header">This app is private.</h2>
+            <p class="login-text">Please log in with your Google account to continue.</p>
+    """, unsafe_allow_html=True)
+    st.button("🔐 Log in with Google", on_click=st.login)
+    st.markdown("</div>", unsafe_allow_html=True)
 
-# Load and cache data
-@st.cache_data
-def load_data():
-    try: 
-        doctors_df = pd.read_csv('md_hubspot.csv')
-        providers_df = pd.read_csv('matching_tickets.csv')
-        return doctors_df, providers_df
-    
-    except Exception as e:
-        st.error(f"Error loading data: {e}")
-        return None, None 
-
-doctors_df, providers_df = load_data()
-
-# Display error if data is not loaded
-if doctors_df is None:
-    st.error("Failed to load MD data. Please check the data files.")
-if providers_df is None:
-    st.error("Failed to load provider data. Please check the data files.")
-
-# Select a provider to match
-st.markdown("<h3 class='subheader'>Provider Selection</h3><br>", unsafe_allow_html=True)
-
-# Display how many tickets for matching were found
-st.info(f"Found {len(providers_df)} tickets for matching.")
-
-# Display a dropdown with a blank option at the beginning
-selected_provider = st.selectbox("Select Provider:", [""] + sorted(providers_df["Ticket name"].dropna()))
-
-# Filter the dataframe only if a provider is selected
-if selected_provider:
-    provider_data = providers_df[providers_df["Ticket name"] == selected_provider]
-    provider = provider_data.iloc[0]  
-    display_provider_details(provider) 
+if not st.user.is_logged_in:
+    login_screen()
 else:
-    provider = None
+    st.markdown(f"""<h2 class='welcome-header'>Welcome, {st.user.name}!</h2>""", unsafe_allow_html=True)
+    st.button("Log out", on_click=st.logout)
 
-# Now look at the MDs to match with
-st.markdown("<h3 class='subheader'>MD Selection</h3><br>", unsafe_allow_html=True)
-# Display how many MDs were found
-st.info(f"Found {len(doctors_df)} medical directors in the data.")
+########################################################
+# Main application (only runs if user is logged in)
+########################################################
+    # Get OpenAI API key from environment variable
+    openai_api_key = os.getenv("OPENAI_API_KEY", "")
 
-with st.container():
-    col1, col2 = st.columns(2)
-    
-    with col1:
-        md_age = st.selectbox(
-            "MD Age/Experience Preference:", 
-            ["Any", "Younger physicians", "Older/more experienced physicians"]
-        )
-    
-    with col2:
-        interaction_style = st.selectbox(
-            "Interaction Style Preference:", 
-            ["Any", "Hands-on/Collaborative", "Autonomous/Hands-off"]
-        )
-    
-    # Determine location options based on nurse state
-    if provider is not None:
-        provider_state = str(provider_data['State (MedSpa Premise)'].iloc[0]) 
+    # Load and cache data
+    @st.cache_data
+    def load_data():
+        try: 
+            doctors_df = pd.read_csv('md_hubspot.csv')
+            providers_df = pd.read_csv('matching_tickets.csv')
+            return doctors_df, providers_df
+        
+        except Exception as e:
+            st.error(f"Error loading data: {e}")
+            return None, None 
 
-        if provider_state == "California":
-            st.info("California nurses can only be matched with California medical directors due to state requirements.")
-            location_preference = "Same State Only"
+    doctors_df, providers_df = load_data()
+
+    # Display error if data is not loaded
+    if doctors_df is None:
+        st.error("Failed to load MD data. Please check the data files.")
+    if providers_df is None:
+        st.error("Failed to load provider data. Please check the data files.")
+
+    # Select a provider to match
+    st.markdown("<h3 class='subheader'>Provider Selection</h3><br>", unsafe_allow_html=True)
+
+    # Display how many tickets for matching were found
+    st.info(f"Found {len(providers_df)} tickets for matching.")
+
+    # Display a dropdown with a blank option at the beginning
+    selected_provider = st.selectbox("Select Provider:", [""] + sorted(providers_df["Ticket name"].dropna()))
+
+    # Filter the dataframe only if a provider is selected
+    if selected_provider:
+        provider_data = providers_df[providers_df["Ticket name"] == selected_provider]
+        provider = provider_data.iloc[0]  
+        display_provider_details(provider) 
+    else:
+        provider = None
+
+    # Now look at the MDs to match with
+    st.markdown("<h3 class='subheader'>MD Selection</h3><br>", unsafe_allow_html=True)
+    # Display how many MDs were found
+    st.info(f"Found {len(doctors_df)} medical directors in the data.")
+
+    with st.container():
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            md_age = st.selectbox(
+                "MD Age/Experience Preference:", 
+                ["Any", "Younger physicians", "Older/more experienced physicians"]
+            )
+        
+        with col2:
+            interaction_style = st.selectbox(
+                "Interaction Style Preference:", 
+                ["Any", "Hands-on/Collaborative", "Autonomous/Hands-off"]
+            )
+        
+        # Determine location options based on nurse state
+        if provider is not None:
+            provider_state = str(provider_data['State (MedSpa Premise)'].iloc[0]) 
+
+            if provider_state == "California":
+                st.info("California nurses can only be matched with California medical directors due to state requirements.")
+                location_preference = "Same State Only"
+            else:
+                location_preference = st.radio("Location Priority:", ["Same State Only", "Nearby States Acceptable", "Any Location"])
         else:
             location_preference = st.radio("Location Priority:", ["Same State Only", "Nearby States Acceptable", "Any Location"])
-    else:
-        location_preference = st.radio("Location Priority:", ["Same State Only", "Nearby States Acceptable", "Any Location"])
-    
-    st.markdown('</div>', unsafe_allow_html=True)
+        
+        st.markdown('</div>', unsafe_allow_html=True)
 
-service_requirements = st.text_area("Specific Requirements or Preferences:", height=100, 
-                                placeholder="E.g., Looking for a mentor in fillers, prefer someone with teaching experience, etc.")
+    service_requirements = st.text_area("Specific Requirements or Preferences:", height=100, 
+                                    placeholder="E.g., Looking for a mentor in fillers, prefer someone with teaching experience, etc.")
 
-if provider is not None and st.button("Find Matching Medical Directors"):
-    if not openai_api_key:
-        st.error("API key is not configured. Please set the OPENAI_API_KEY environment variable.")
-    else:
-        with st.spinner("Finding the best medical director matches..."):
-            prompt, error = create_prompt( 
-                doctors_df, 
-                provider,
-                filters={
-                    "md_age": md_age if md_age != "Any" else None,
-                    "interaction_style": interaction_style if interaction_style != "Any" else None,
-                    "location": location_preference,
-                    "service_requirements": service_requirements
-                }
-            )
+    if provider is not None and st.button("Find Matching Medical Directors"):
+        if not openai_api_key:
+            st.error("API key is not configured. Please set the OPENAI_API_KEY environment variable.")
+        else:
+            with st.spinner("Finding the best medical director matches..."):
+                prompt, error = create_prompt( 
+                    doctors_df, 
+                    provider,
+                    filters={
+                        "md_age": md_age if md_age != "Any" else None,
+                        "interaction_style": interaction_style if interaction_style != "Any" else None,
+                        "location": location_preference,
+                        "service_requirements": service_requirements
+                    }
+                )
 
-            if error:
-                st.error(error)
-            else:
-                response = query_openai(prompt, openai_api_key)
-                matches = None
-                
-                # Format the responses
-                if isinstance(response, dict):
-                    matches = response
-                elif isinstance(response, str):
-                    cleaned_response = clean_json_response(response)
-                    try:
-                        matches = json.loads(cleaned_response)
-                    except json.JSONDecodeError as e:
-                        st.error(f"Error parsing JSON response here: {str(e)}")
-                        st.text(f"Raw response: {response}")
-                        matches = None
+                if error:
+                    st.error(error)
                 else:
-                    st.error("The AI did not return a valid JSON response. Please try again or check your API key/usage.")
-                    st.text(f"Raw response: {response}")
-
-                if matches:    
-                    # Display matches
-                    st.markdown(f"<h3>Top Medical Director Matches for {provider_data}</h3>", unsafe_allow_html=True)
+                    response = query_openai(prompt, openai_api_key)
+                    matches = None
                     
-                    for match in matches.get("matches", []):
-                        # Determine score color class
-                        score = float(match['match_score'])
-                        score_class = "high-score" if score >= 8.0 else "medium-score" if score >= 6.0 else "low-score"
+                    # Format the responses
+                    if isinstance(response, dict):
+                        matches = response
+                    elif isinstance(response, str):
+                        cleaned_response = clean_json_response(response)
+                        try:
+                            matches = json.loads(cleaned_response)
+                        except json.JSONDecodeError as e:
+                            st.error(f"Error parsing JSON response here: {str(e)}")
+                            st.text(f"Raw response: {response}")
+                            matches = None
+                    else:
+                        st.error("The AI did not return a valid JSON response. Please try again or check your API key/usage.")
+                        st.text(f"Raw response: {response}")
+
+                    if matches:    
+                        # Display matches
+                        st.markdown(f"<h3>Top Medical Director Matches for {provider_data}</h3>", unsafe_allow_html=True)
                         
-                        # Find the MD in the dataframe to get their traits and state
-                        md_name = match['name']
-                        md_row = doctors_df[
-                            doctors_df.apply(
-                                lambda row: md_name.lower() in f"{row['First Name']} {row['Last Name']}".lower(), 
-                                axis=1
+                        for match in matches.get("matches", []):
+                            # Determine score color class
+                            score = float(match['match_score'])
+                            score_class = "high-score" if score >= 8.0 else "medium-score" if score >= 6.0 else "low-score"
+                            
+                            # Find the MD in the dataframe to get their traits and state
+                            md_name = match['name']
+                            md_row = doctors_df[
+                                doctors_df.apply(
+                                    lambda row: md_name.lower() in f"{row['First Name']} {row['Last Name']}".lower(), 
+                                    axis=1
+                                )
+                            ]
+                            
+                            # Get MD traits and location if available
+                            traits_html = ""
+                            states_html = ""
+                            
+                            if not md_row.empty:
+                                md = md_row.iloc[0]
+                                traits = extract_personality_traits(md.get('Personality Traits', ''))
+                                
+                                # Get states
+                                states = md.get('States List', [])
+                                if not states and 'Residing State  (Lives In)' in md:
+                                    states = [md.get('Residing State  (Lives In)', '')]
+                                
+                                # Create state tags
+                                for state in states:
+                                    if state and pd.notna(state):
+                                        state_class = "trait-tag state-tag"
+                                        if state.upper() == "CA":
+                                            state_class += " warning-tag"
+                                        states_html += f'<span class="{state_class}">{state}</span> '
+                                
+                                # Create trait tags
+                                for trait in traits:
+                                    if trait.strip():
+                                        traits_html += f'<span class="trait-tag">{trait.strip()}</span> '
+                            
+                            # Build the match card with traits and fixed location included
+                            st.markdown(
+                                f"""<div class="match-card">
+                                <div style="display: flex; justify-content: space-between; align-items: center;">
+                                    <h4>{match['name']}</h4>
+                                    <div class="compatibility-score {score_class}">{match['match_score']}</div>
+                                </div>
+                                <p><strong>Contact:</strong> {match['email']}</p>
+                                <p><strong>Capacity:</strong> {match.get('capacity_status', 'Available')}</p>
+                                <div class="nurse-info">
+                                    <div class="nurse-detail">
+                                        <h4>Location</h4>
+                                        {states_html if states_html else "Location not specified"}
+                                    </div>
+                                    <div class="nurse-detail">
+                                        <h4>Personality Traits</h4>
+                                        {traits_html if traits_html else "No traits specified"}
+                                    </div>
+                                </div>
+                                <div class="match-reason">
+                                    <p><strong>Why this match works:</strong> {match['reasoning']}</p>
+                                </div>
+                                </div>""",
+                                unsafe_allow_html=True
                             )
-                        ]
-                        
-                        # Get MD traits and location if available
-                        traits_html = ""
-                        states_html = ""
-                        
-                        if not md_row.empty:
-                            md = md_row.iloc[0]
-                            traits = extract_personality_traits(md.get('Personality Traits', ''))
-                            
-                            # Get states
-                            states = md.get('States List', [])
-                            if not states and 'Residing State  (Lives In)' in md:
-                                states = [md.get('Residing State  (Lives In)', '')]
-                            
-                            # Create state tags
-                            for state in states:
-                                if state and pd.notna(state):
-                                    state_class = "trait-tag state-tag"
-                                    if state.upper() == "CA":
-                                        state_class += " warning-tag"
-                                    states_html += f'<span class="{state_class}">{state}</span> '
-                            
-                            # Create trait tags
-                            for trait in traits:
-                                if trait.strip():
-                                    traits_html += f'<span class="trait-tag">{trait.strip()}</span> '
-                        
-                        # Build the match card with traits and fixed location included
-                        st.markdown(
-                            f"""<div class="match-card">
-                            <div style="display: flex; justify-content: space-between; align-items: center;">
-                                <h4>{match['name']}</h4>
-                                <div class="compatibility-score {score_class}">{match['match_score']}</div>
-                            </div>
-                            <p><strong>Contact:</strong> {match['email']}</p>
-                            <p><strong>Capacity:</strong> {match.get('capacity_status', 'Available')}</p>
-                            <div class="nurse-info">
-                                <div class="nurse-detail">
-                                    <h4>Location</h4>
-                                    {states_html if states_html else "Location not specified"}
-                                </div>
-                                <div class="nurse-detail">
-                                    <h4>Personality Traits</h4>
-                                    {traits_html if traits_html else "No traits specified"}
-                                </div>
-                            </div>
-                            <div class="match-reason">
-                                <p><strong>Why this match works:</strong> {match['reasoning']}</p>
-                            </div>
-                            </div>""",
-                            unsafe_allow_html=True
-                        )
