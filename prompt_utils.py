@@ -1,5 +1,5 @@
 import pandas as pd
-import re
+
 def get_clean_value(value, default="Unknown"):
     """
     Gets a clean value from a string, handling common formatting issues.
@@ -72,19 +72,17 @@ def create_prompt(doctors_df, provider, filters=None):
 
     """
 
-    doctors_df = doctors_df.sort_values(by="Residing State  (Lives In)")
+    doctors_df = doctors_df.sort_values(by="RESIDING_STATE")
     # Add doctor information to the prompt
     for _, doctor in doctors_df.iterrows():
         # Extract provider information
-        clean_first_name = re.sub(r"^dr\.?\s*", "", str(doctor['First Name']), flags=re.IGNORECASE).strip()
-        doctor_name = f"{clean_first_name} {doctor['Last Name']}"
-        doctor_email = str(doctor['Email'])
-        doctor_accepted_services = str(doctor['Accepted Services'])
-        doctor_residing_state = str(doctor['Residing State  (Lives In)'])
-        doctor_licensed_states = str(doctor['Licensed States '])
-        doctor_experience_level = str(doctor['Experience Level '])
-        doctor_accepting_status = str(doctor['Accepting Status '])
-
+        doctor_name = str(doctor['FULL_NAME'])
+        doctor_email = str(doctor['EMAIL'])
+        doctor_residing_state = str(doctor['RESIDING_STATE'])
+        doctor_licensed_states = str(doctor['LICENSED_STATES'])
+        doctor_experience_level = str(doctor['EXPERIENCE_LEVEL'])
+        doctor_accepting_status = str(doctor['ACCEPTING_STATUS'])
+        doctor_accepted_services = str(doctor['ACCEPTED_SERVICES'])
         
         doctor_info = f"""
         Doctor:

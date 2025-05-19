@@ -10,7 +10,7 @@ import time
 from data_loader import load_data, extract_personality_traits, extract_md_preferences
 from prompt_utils import create_prompt
 from streamlit_gsheets import GSheetsConnection
-from sql_queries import TICKETS_QUERY
+from sql_queries import TICKETS_QUERY, AVAILABLE_MDS_QUERY
 
 
 ########################################################
@@ -99,7 +99,6 @@ def generate_service_badges(service_string):
     services = [s.strip() for s in service_string.split(delimiter)]
     return ' '.join(f'<span class="service-badge">{s}</span>' for s in services if s)
 
-
 def get_clean_value(value, default="Unknown"):
     """
     Gets a clean value from a string, handling common formatting issues.
@@ -107,14 +106,6 @@ def get_clean_value(value, default="Unknown"):
     if pd.isna(value) or str(value).strip().lower() in {"n/a", "na", ""}:
         return default
     return str(value).strip()
-
-# Try to read column names in a case-insensitive way
-def get_column_case_insensitive(df, column_name):
-    """Get the actual case of a column name regardless of case."""
-    for col in df.columns:
-        if col.lower() == column_name.lower():
-            return col
-    return None
 
 # Function to call OpenAI API with fallback to GPT-3.5
 def query_openai(prompt, api_key, max_retries=2):
@@ -136,7 +127,13 @@ def query_openai(prompt, api_key, max_retries=2):
                 max_tokens=4000,
                 temperature=0.2,
                 messages=[
-                    {"role": "system", "content": "You are a medical staffing expert at Moxie. You help match nurses with medical directors based on their location, experience, services offered, personality traits, and other relevant factors. You always prioritize state licensing requirements (especially for California) and capacity limitations. You always respond in JSON format as specified in the prompts."},
+                    {"role": "system", "content": """
+                        You are a medical staffing expert at Moxie. You help match nurses with medical 
+                        directors based on their location, experience, services offered, personality traits, 
+                        and other relevant factors. You always prioritize state licensing requirements (especially 
+                        for California) and capacity limitations. You always respond in JSON format as specified 
+                        in the prompts.
+                    """},
                     {"role": "user", "content": prompt}
                 ]
             )
@@ -170,11 +167,6 @@ def query_openai(prompt, api_key, max_retries=2):
             else:
                 st.error(f"API error: {error_str}")
                 return {"error": f"API error: {error_str}"}
-
-# Cache the Open API responses for 1 hour
-@st.cache_data(ttl=3600) 
-def cached_openai_api(prompt, openai_api_key):
-    return query_openai(prompt, openai_api_key)
 
 ########################################################
 # Page config
@@ -219,7 +211,7 @@ else:
     @st.cache_data
     def load_md_data():
         try: 
-            doctors_df = pd.read_csv('md_hubspot.csv')
+            doctors_df = conn.query(AVAILABLE_MDS_QUERY, ttl=600)
             return doctors_df
         
         except Exception as e:
@@ -239,12 +231,12 @@ else:
 
     # Display error if data is not loaded
     if doctors_df is None:
-        st.error("Failed to load MD data. Please check the data files.")
+        st.error("Failed to load MD data. Contact Sinthuja to troubleshoot.")
     if providers_df is None:
-        st.error("Failed to load provider data. Please check the data files.")
+        st.error("Failed to load provider data. Contact Sinthuja to troubleshoot.")
 
     # Select a provider to match
-    st.markdown("<h3 class='subheader'>Select a Provider Ticket</h3><br>", unsafe_allow_html=True)
+    st.markdown("<h3 class='subheader'>Provider Selection</h3><br>", unsafe_allow_html=True)
 
     # Display how many tickets for matching were found
     st.info(f"Found {len(providers_df)} tickets in pending status.")
@@ -256,7 +248,7 @@ else:
     providers_sorted = providers_df.sort_values("TICKET_STATUS", ascending=False)
 
     # Display a dropdown with a blank option at the beginning
-    selected_provider = st.selectbox("Select Provider Ticket:", [""] + providers_sorted["DISPLAY"].tolist())
+    selected_provider = st.selectbox("Select a provider to match:", [""] + providers_sorted["DISPLAY"].tolist())
 
     # Filter the dataframe only if a provider is selected
     if selected_provider:
@@ -265,11 +257,6 @@ else:
         display_provider_details(provider) 
     else:
         provider = None
-
-    # Now look at the MDs to match with
-    st.markdown("<h3 class='subheader'>MD Selection</h3><br>", unsafe_allow_html=True)
-    # Display how many MDs were found
-    st.info(f"Found {len(doctors_df)} medical directors available for matching.")
 
     service_requirements = st.text_area("Any additional requirements or preferences:", height=100, 
                                     placeholder="E.g., Looking for a mentor in fillers, prefer someone with teaching experience, etc.")
@@ -308,64 +295,88 @@ else:
                         st.error("The AI did not return a valid JSON response. Please try again or check your API key/usage.")
                         st.text(f"Raw response: {response}")
 
-                    if matches:    
-                        # Display matches
-                        st.markdown(f"<h3>Top Medical Director Matches for {provider_data['SUBJECT']}</h3>", unsafe_allow_html=True)
-                        
-                        for match in matches.get("matches", []):
-                            # Determine score color class
-                            score = float(match['match_score'])
-                            score_class = "high-score" if score >= 8.0 else "medium-score" if score >= 6.0 else "low-score"
-                            
-                            # Find the MD in the dataframe to get their traits and state
-                            md_name = match['name']
-                            md_row = doctors_df[
-                                doctors_df.apply(
-                                    lambda row: md_name.lower() in f"{row['First Name']} {row['Last Name']}".lower(), 
-                                    axis=1
-                                )
-                            ]
-                            
-                            # Get MD traits and location if available
-                            traits_html = ""
-                            states_html = ""
-                            
-                            if not md_row.empty:
-                                md = md_row.iloc[0]
-                                traits = extract_personality_traits(md.get('Personality Traits', ''))
-                                
-                                # Get states
-                                states = md.get('States List', [])
-                                if not states and 'Residing State  (Lives In)' in md:
-                                    states = [md.get('Residing State  (Lives In)', '')]
-                                
-                                # Create state tags
-                                for state in states:
-                                    if state and pd.notna(state):
-                                        state_class = "trait-tag state-tag"
-                                        if state.upper() == "CA":
-                                            state_class += " warning-tag"
-                                        states_html += f'<span class="{state_class}">{state}</span> '
-                                
-                                # Create trait tags
-                                for trait in traits:
-                                    if trait.strip():
-                                        traits_html += f'<span class="trait-tag">{trait.strip()}</span> '
-                            
-                            # Build the match card with traits and fixed location included
-                            st.markdown(
-                                f"""<div class="match-card">
-                                <div style="display: flex; justify-content: space-between; align-items: center;">
-                                    <h4>{match['name']}</h4>
-                                    <div class="compatibility-score {score_class}">{match['match_score']}</div>
-                                </div>
-                                <p><strong>Contact:</strong> {match['email']}</p>
-                                <p><strong>Capacity:</strong> {match.get('capacity_status', 'Available')}</p>
-                                <p><strong>State:</strong> {states_html if states_html else "Location not specified"}</p>
-                                <p><strong>Personality Traits:</strong> {traits_html if traits_html else "No traits specified"}</p>
-                                <div class="match-reason">
-                                    <p><strong>Why this match works:</strong> {match['reasoning']}</p>
-                                </div>
-                                </div>""",
-                                unsafe_allow_html=True
-                            )
+                    # Cache matches in session state
+                    st.session_state["last_matches"] = matches
+
+    if "last_matches" in st.session_state:    
+        # Display matches
+        st.markdown(f"<h3 class='subheader'>Top MD Matches for {provider['SUBJECT']}</h3><br>", unsafe_allow_html=True)
+        
+        matches = st.session_state["last_matches"]
+        for match in matches.get("matches", []):
+            # Determine score color class
+            score = float(match['match_score'])
+            score_class = "high-score" if score >= 8.0 else "medium-score" if score >= 6.0 else "low-score"
+            
+            # Find the MD in the dataframe to get their traits and state
+            md_name = match['name']
+            md_row = doctors_df[
+                doctors_df.apply(
+                    lambda row: md_name.lower() in row['FULL_NAME'].lower(), 
+                    axis=1
+                )
+            ].iloc[0] 
+
+            # Build the match card with traits and fixed location included
+            st.markdown(
+                f"""<div class="match-card">
+                <div style="display: flex; justify-content: space-between; align-items: center;">
+                    <h4>{match['name']}</h4>
+                    <div class="compatibility-score {score_class}">{match['match_score']}</div>
+                </div>
+                <p><strong>Email:</strong> {md_row['EMAIL']}</p>
+                <p><strong>Capacity:</strong> {match.get('capacity_status', 'Available')}</p>
+                <p><strong>State:</strong> <span class="trait-tag state-tag">{md_row['RESIDING_STATE']}</span></p>
+                <p><strong>Personality Traits:</strong> No traits specified</p>
+                <div class="match-reason">
+                    <p><strong>Why this match works:</strong> {match['reasoning']}</p>
+                </div>
+                </div>""",
+                unsafe_allow_html=True
+            )
+            
+        # Collect final decision and feedback
+        st.markdown(f"<h3 class='subheader'>Matching Feedback</h3><br>", unsafe_allow_html=True)
+        st.markdown("""
+            Use this form to provide feedback on the quality and accuracy of the matching algorithm.
+            This helps us improve future matches and track performance over time.
+        """)
+
+        with st.form("final_match_form"):
+            selected_match_names = st.multiselect(
+                "Which MDs will you be reaching out to match with this provider?",
+                [match["name"] for match in matches["matches"]]
+            )
+
+            feedback = st.text_area(
+                "Provide any feedback or rationale on how well the matching process went.",
+                placeholder="E.g., Excellent personality alignment. Preferred teaching experience was met."
+            )
+
+            submit = st.form_submit_button("Submit to Google Sheets")
+
+            if submit:
+                conn_gsheet = st.connection("gsheets", type=GSheetsConnection)
+
+                row = {
+                    "Timestamp": time.strftime("%Y-%m-%d %H:%M:%S"),
+                    "Provider": provider["SUBJECT"],
+                    "Provider Email": provider["PROVIDER_EMAIL"],
+                    "Selected MD(s)": ", ".join(selected_match_names),
+                    "Feedback": feedback
+                }
+
+                try:
+                    # Read existing data
+                    existing_data = conn_gsheet.read()
+
+                    # Add new row
+                    new_row_df = pd.DataFrame([row])
+                    updated_data = pd.concat([existing_data, new_row_df], ignore_index=True)
+
+                    # Push update
+                    conn_gsheet.update(data=updated_data)
+
+                    st.success("✅ Your decision and feedback have been submitted successfully!")
+                except Exception as e:
+                    st.error(f"❌ Failed to write to Google Sheet: {e}")    # Clear session state

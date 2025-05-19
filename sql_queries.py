@@ -1,6 +1,4 @@
-# sql_queries.py
-
-# Example SQL queries as string constants
+# Get all tickets that are pending (MD Matching) 
 TICKETS_QUERY = """
 SELECT 
   subject,
@@ -21,5 +19,16 @@ WHERE bird_eats_bug_email IS NOT NULL
     AND subject NOT LIKE '%Match 2%'
 """
 
-# Add more queries as needed, e.g.:
-# ANOTHER_QUERY = "SELECT ... FROM ... WHERE ..." 
+# Get all MDs that are accepting matches
+AVAILABLE_MDS_QUERY = """
+  SELECT
+    FULL_NAME,
+    EMAIL,
+    RESIDING_STATE,
+    LICENSED_STATES,
+    EXPERIENCE_LEVEL,
+    ACCEPTING_STATUS,
+    ACCEPTED_SERVICES
+  FROM analytics.dbt.hubspot_md_contacts_mart
+  WHERE ACCEPTING_STATUS IN ('Open', 'Open - Mid Level Only')
+"""
