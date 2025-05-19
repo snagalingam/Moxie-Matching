@@ -13,15 +13,15 @@ def create_prompt(doctors_df, provider, filters=None):
         filters = {}
     
     # Extract provider information
-    ticket_name = str(provider['Ticket name'])
-    provider_email = str(provider['Bird Eats Bug Email'])
-    provider_license_type = str(provider['Provider License Type']) 
-    provider_experience_level = str(provider['Experience Level  '])
-    provider_state = str(provider['State (MedSpa Premise)']) 
-    provider_md_location_preference = get_clean_value(provider['MD Location Preference (state)'], "")
-    provider_services = get_clean_value(provider['Services Provided'], "None Specified") 
-    provider_future_services = get_clean_value(provider['FUTURE Services (if known)'], "")
-    provider_additional_services = get_clean_value(provider["Addt'l Service Notes"], "")
+    ticket_name = str(provider['SUBJECT'])
+    provider_email = str(provider['PROVIDER_EMAIL'])
+    provider_license_type = str(provider['PROVIDER_LICENSE_TYPE']) 
+    provider_experience_level = str(provider['PROVIDER_EXPERIENCE_LEVEL'])
+    provider_state = str(provider['PROVIDER_STATE']) 
+    provider_md_location_preference = get_clean_value(provider['PROVIDER_MD_LOCATION_PREFERENCE'], "")
+    provider_services = get_clean_value(provider['PROVIDER_SERVICES'], "None Specified") 
+    provider_future_services = get_clean_value(provider['PROVIDER_FUTURE_SERVICES'], "")
+    provider_additional_services = get_clean_value(provider["PROVIDER_ADDITIONAL_SERVICES"], "")
     
     # Create base prompt
     prompt = f"""
@@ -29,7 +29,7 @@ def create_prompt(doctors_df, provider, filters=None):
     are opening up a new medspa and need a medical director to oversee the practice.
     
     Provider Information:
-    - Name: {ticket_name}
+    - Ticket Name: {ticket_name}
     - Email: {provider_email}
     - License Type: {provider_license_type}
     - Experience Level: {provider_experience_level}
@@ -67,7 +67,6 @@ def create_prompt(doctors_df, provider, filters=None):
     5. A match score out of 10
     
     Be specific and detailed in your reasoning, drawing direct connections between their profiles.
-    All of the following people are medical doctors, regardless of if they have Dr. in front of their name.
     
     Available Medical Directors:
 

@@ -1,4 +1,4 @@
-import hashlib
+import ast
 import json
 import openai
 import os
@@ -9,6 +9,9 @@ import time
 
 from data_loader import load_data, extract_personality_traits, extract_md_preferences
 from prompt_utils import create_prompt
+from streamlit_gsheets import GSheetsConnection
+from sql_queries import TICKETS_QUERY
+
 
 ########################################################
 # Helper functions
@@ -26,18 +29,18 @@ def display_provider_details(provider):
     """
     Displays the provider details nicely formatted
     """
-    ticket_name = str(provider['Ticket name'])
-    provider_email = str(provider['Bird Eats Bug Email'])
-    ticket_status = str(provider['Ticket status'])
-    priority = str(provider['Priority'])
-    kick_off_date = str(provider['Kick-Off Date'])
-    provider_license_type = str(provider['Provider License Type']) 
-    provider_experience_level = str(provider['Experience Level  '])
-    provider_state = str(provider['State (MedSpa Premise)']) 
-    provider_md_location_preference = get_clean_value(provider['MD Location Preference (state)'], "")
-    provider_services = get_clean_value(provider['Services Provided'], "None Specified") 
-    provider_future_services = get_clean_value(provider['FUTURE Services (if known)'], "")
-    provider_additional_services = get_clean_value(provider["Addt'l Service Notes"], "")
+    subject = str(provider['SUBJECT'])
+    provider_email = str(provider['PROVIDER_EMAIL'])
+    ticket_status = str(provider['TICKET_STATUS'])
+    ticket_priority = str(provider['TICKET_PRIORITY'])
+    kick_off_date = str(provider['KICK_OFF_DATE'])
+    provider_license_type = str(provider['PROVIDER_LICENSE_TYPE']) 
+    provider_experience_level = str(provider['PROVIDER_EXPERIENCE_LEVEL'])
+    provider_state = str(provider['PROVIDER_STATE']) 
+    provider_md_location_preference = get_clean_value(provider['PROVIDER_MD_LOCATION_PREFERENCE'], "")
+    provider_services = get_clean_value(provider['PROVIDER_SERVICES'], "None Specified") 
+    provider_future_services = get_clean_value(provider['PROVIDER_FUTURE_SERVICES'], "")
+    provider_additional_services = get_clean_value(provider["PROVIDER_ADDITIONAL_SERVICES"], "") 
     
     # Create service tags
     services_html = generate_service_badges(provider_services)
@@ -58,9 +61,9 @@ def display_provider_details(provider):
     st.markdown(f"""
         <div class="nurse-info">
             <div class="nurse-detail">
-                <h4>{ticket_name}</h4>
+                <h4>{subject}</h4>
                 <p><strong>Ticket Status:</strong> {ticket_status}</p>
-                <p><strong>Ticket Priority:</strong> {priority}</p>
+                <p><strong>Ticket Priority:</strong> {ticket_priority}</p>
                 <p><strong>Kick-Off Date:</strong> {kick_off_date}</p>
                 <p><strong>Email:</strong> {provider_email}</p>
                 <p><strong>License:</strong> {provider_license_type}</p>
@@ -76,13 +79,26 @@ def display_provider_details(provider):
 
 def generate_service_badges(service_string):
     """
-    Converts a semicolon- or comma-separated string of services into HTML badge spans.
+    Converts a list-like string or delimited string of services into HTML badge spans.
+    Handles cases where services are passed in as a list string like '["Botox", "Filler"]'
+    or as a comma/semicolon-separated string.
     """
-    if service_string and service_string != "None specified":
-        delimiter = ';' if ';' in service_string else ','
-        services = [s.strip() for s in service_string.split(delimiter)]
-        return ' '.join(f'<span class="service-badge">{s}</span>' for s in services if s)
-    return ""
+    if not service_string or service_string == "None specified":
+        return ""
+
+    try:
+        # Try parsing as a list string (e.g., '["Botox", "Filler"]')
+        services = ast.literal_eval(service_string)
+        if isinstance(services, list):
+            return ' '.join(f'<span class="service-badge">{s.strip()}</span>' for s in services if s)
+    except (ValueError, SyntaxError):
+        pass
+
+    # Fallback: treat as delimited string
+    delimiter = ';' if ';' in service_string else ','
+    services = [s.strip() for s in service_string.split(delimiter)]
+    return ' '.join(f'<span class="service-badge">{s}</span>' for s in services if s)
+
 
 def get_clean_value(value, default="Unknown"):
     """
@@ -169,9 +185,6 @@ st.set_page_config(page_title="Moxie Provider-MD Matching", layout="wide")
 with open('styles.css') as f:
     st.markdown(f'<style>{f.read()}</style>', unsafe_allow_html=True)
 
-st.markdown("<h1 class='main-header'>Moxie Provider-MD Matching System</h1>", unsafe_allow_html=True)
-st.markdown("<div class='powered-by'>Powered by ChatGPT</div>", unsafe_allow_html=True)
-
 ########################################################
 # Require login
 ########################################################
@@ -193,22 +206,36 @@ else:
 ########################################################
 # Main application (only runs if user is logged in)
 ########################################################
+    st.markdown("<h1 class='main-header'>Moxie Provider-MD Matching System</h1>", unsafe_allow_html=True)
+    st.markdown("<div class='powered-by'>Powered by ChatGPT</div>", unsafe_allow_html=True)
+
     # Get OpenAI API key from environment variable
     openai_api_key = os.getenv("OPENAI_API_KEY", "")
 
+    # Connect to Snowflake
+    conn = st.connection("snowflake")
+
     # Load and cache data
     @st.cache_data
-    def load_data():
+    def load_md_data():
         try: 
             doctors_df = pd.read_csv('md_hubspot.csv')
-            providers_df = pd.read_csv('matching_tickets.csv')
-            return doctors_df, providers_df
+            return doctors_df
         
         except Exception as e:
-            st.error(f"Error loading data: {e}")
-            return None, None 
+            return None
 
-    doctors_df, providers_df = load_data()
+    @st.cache_data
+    def load_provider_data():
+        try: 
+            providers_df = conn.query(TICKETS_QUERY, ttl=600)
+            return providers_df
+        
+        except Exception as e:
+            return None
+
+    doctors_df = load_md_data()
+    providers_df = load_provider_data()
 
     # Display error if data is not loaded
     if doctors_df is None:
@@ -217,17 +244,23 @@ else:
         st.error("Failed to load provider data. Please check the data files.")
 
     # Select a provider to match
-    st.markdown("<h3 class='subheader'>Provider Selection</h3><br>", unsafe_allow_html=True)
+    st.markdown("<h3 class='subheader'>Select a Provider Ticket</h3><br>", unsafe_allow_html=True)
 
     # Display how many tickets for matching were found
-    st.info(f"Found {len(providers_df)} tickets for matching.")
+    st.info(f"Found {len(providers_df)} tickets in pending status.")
+
+    # Create a new column for display: "Subject - Status"
+    providers_df["DISPLAY"] = providers_df["SUBJECT"] + " - " + providers_df["TICKET_STATUS"]
+
+    # Sort by TICKET_STATUS
+    providers_sorted = providers_df.sort_values("TICKET_STATUS", ascending=False)
 
     # Display a dropdown with a blank option at the beginning
-    selected_provider = st.selectbox("Select Provider:", [""] + sorted(providers_df["Ticket name"].dropna()))
+    selected_provider = st.selectbox("Select Provider Ticket:", [""] + providers_sorted["DISPLAY"].tolist())
 
     # Filter the dataframe only if a provider is selected
     if selected_provider:
-        provider_data = providers_df[providers_df["Ticket name"] == selected_provider]
+        provider_data = providers_df[providers_df["DISPLAY"] == selected_provider]
         provider = provider_data.iloc[0]  
         display_provider_details(provider) 
     else:
@@ -236,38 +269,9 @@ else:
     # Now look at the MDs to match with
     st.markdown("<h3 class='subheader'>MD Selection</h3><br>", unsafe_allow_html=True)
     # Display how many MDs were found
-    st.info(f"Found {len(doctors_df)} medical directors in the data.")
+    st.info(f"Found {len(doctors_df)} medical directors available for matching.")
 
-    with st.container():
-        col1, col2 = st.columns(2)
-        
-        with col1:
-            md_age = st.selectbox(
-                "MD Age/Experience Preference:", 
-                ["Any", "Younger physicians", "Older/more experienced physicians"]
-            )
-        
-        with col2:
-            interaction_style = st.selectbox(
-                "Interaction Style Preference:", 
-                ["Any", "Hands-on/Collaborative", "Autonomous/Hands-off"]
-            )
-        
-        # Determine location options based on nurse state
-        if provider is not None:
-            provider_state = str(provider_data['State (MedSpa Premise)'].iloc[0]) 
-
-            if provider_state == "California":
-                st.info("California nurses can only be matched with California medical directors due to state requirements.")
-                location_preference = "Same State Only"
-            else:
-                location_preference = st.radio("Location Priority:", ["Same State Only", "Nearby States Acceptable", "Any Location"])
-        else:
-            location_preference = st.radio("Location Priority:", ["Same State Only", "Nearby States Acceptable", "Any Location"])
-        
-        st.markdown('</div>', unsafe_allow_html=True)
-
-    service_requirements = st.text_area("Specific Requirements or Preferences:", height=100, 
+    service_requirements = st.text_area("Any additional requirements or preferences:", height=100, 
                                     placeholder="E.g., Looking for a mentor in fillers, prefer someone with teaching experience, etc.")
 
     if provider is not None and st.button("Find Matching Medical Directors"):
@@ -279,9 +283,6 @@ else:
                     doctors_df, 
                     provider,
                     filters={
-                        "md_age": md_age if md_age != "Any" else None,
-                        "interaction_style": interaction_style if interaction_style != "Any" else None,
-                        "location": location_preference,
                         "service_requirements": service_requirements
                     }
                 )
@@ -309,7 +310,7 @@ else:
 
                     if matches:    
                         # Display matches
-                        st.markdown(f"<h3>Top Medical Director Matches for {provider_data}</h3>", unsafe_allow_html=True)
+                        st.markdown(f"<h3>Top Medical Director Matches for {provider_data['SUBJECT']}</h3>", unsafe_allow_html=True)
                         
                         for match in matches.get("matches", []):
                             # Determine score color class
@@ -360,16 +361,8 @@ else:
                                 </div>
                                 <p><strong>Contact:</strong> {match['email']}</p>
                                 <p><strong>Capacity:</strong> {match.get('capacity_status', 'Available')}</p>
-                                <div class="nurse-info">
-                                    <div class="nurse-detail">
-                                        <h4>Location</h4>
-                                        {states_html if states_html else "Location not specified"}
-                                    </div>
-                                    <div class="nurse-detail">
-                                        <h4>Personality Traits</h4>
-                                        {traits_html if traits_html else "No traits specified"}
-                                    </div>
-                                </div>
+                                <p><strong>State:</strong> {states_html if states_html else "Location not specified"}</p>
+                                <p><strong>Personality Traits:</strong> {traits_html if traits_html else "No traits specified"}</p>
                                 <div class="match-reason">
                                     <p><strong>Why this match works:</strong> {match['reasoning']}</p>
                                 </div>
