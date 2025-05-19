@@ -7,7 +7,6 @@ import re
 import streamlit as st
 import time
 
-from data_loader import load_data, extract_personality_traits, extract_md_preferences
 from prompt_utils import create_prompt
 from streamlit_gsheets import GSheetsConnection
 from sql_queries import TICKETS_QUERY, AVAILABLE_MDS_QUERY
