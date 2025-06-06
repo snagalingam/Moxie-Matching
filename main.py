@@ -98,24 +98,6 @@ def generate_service_badges(service_string):
     services = [s.strip() for s in service_string.split(delimiter)]
     return ' '.join(f'<span class="service-badge">{s}</span>' for s in services if s)
 
-def generate_trait_badges(traits_string):
-    """Generate HTML badges for personality traits."""
-    if not traits_string or traits_string == "None specified":
-        return "No traits specified"
-
-    try:
-        traits = ast.literal_eval(traits_string)
-        if isinstance(traits, list):
-            return ' '.join(
-                f'<span class="trait-tag">{t.strip()}</span>' for t in traits if t
-            )
-    except (ValueError, SyntaxError):
-        pass
-
-    delimiter = ';' if ';' in traits_string else ','
-    traits = [t.strip() for t in traits_string.split(delimiter)]
-    return ' '.join(f'<span class="trait-tag">{t}</span>' for t in traits if t)
-
 def get_clean_value(value, default="Unknown"):
     """
     Gets a clean value from a string, handling common formatting issues.
@@ -325,16 +307,15 @@ else:
             score_class = "high-score" if score >= 8.0 else "medium-score" if score >= 6.0 else "low-score"
             
             # Find the MD in the dataframe to get their traits and state
-            md_name = match['name']
+            md_email = match['email']
             md_row = doctors_df[
                 doctors_df.apply(
-                    lambda row: md_name.lower() in row['FULL_NAME'].lower(), 
+                    lambda row: md_email.lower() in row['EMAIL'].lower(), 
                     axis=1
                 )
             ].iloc[0] 
 
             md_traits = get_clean_value(md_row.get('MD_TRAITS', ''), '')
-            traits_html = generate_trait_badges(md_traits)
             md_bio = get_clean_value(md_row.get('MD_BIO', ''), 'No bio provided')
 
             # Build the match card with traits, bio, and fixed location included
@@ -346,8 +327,8 @@ else:
                 </div>
                 <p><strong>Email:</strong> {md_row['EMAIL']}</p>
                 <p><strong>Capacity:</strong> {match.get('capacity_status', 'Available')}</p>
-                <p><strong>State:</strong> <span class="trait-tag state-tag">{md_row['RESIDING_STATE']}</span></p>
-                <p><strong>Personality Traits:</strong> {traits_html}</p>
+                <p><strong>Residing State:</strong> <span class="trait-tag state-tag">{md_row['RESIDING_STATE']}</span></p>
+                <p><strong>Personality Traits:</strong> {md_row['MD_TRAITS']}</p>
                 <div class="match-details">
                     <p><strong>Personal Bio:</strong> {md_bio}</p>
                 </div>
