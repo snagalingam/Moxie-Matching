@@ -83,6 +83,8 @@ def create_prompt(doctors_df, provider, filters=None):
         doctor_experience_level = str(doctor['EXPERIENCE_LEVEL'])
         doctor_accepting_status = str(doctor['ACCEPTING_STATUS'])
         doctor_accepted_services = str(doctor['ACCEPTED_SERVICES'])
+        doctor_traits = str(doctor['MD_TRAITS'])
+        doctor_bio = str(doctor['MD_BIO'])
         
         doctor_info = f"""
         Doctor:
@@ -93,6 +95,8 @@ def create_prompt(doctors_df, provider, filters=None):
         - Experience Level: {doctor_experience_level}
         - Accepting Status: {doctor_accepting_status}
         - Accepted Services: {doctor_accepted_services}
+        - Personality Traits: {doctor_traits}
+        - Personal Bio: {doctor_bio}
         """
         
         prompt += doctor_info + "\n"
