@@ -98,6 +98,24 @@ def generate_service_badges(service_string):
     services = [s.strip() for s in service_string.split(delimiter)]
     return ' '.join(f'<span class="service-badge">{s}</span>' for s in services if s)
 
+def generate_trait_badges(traits_string):
+    """Generate HTML badges for personality traits."""
+    if not traits_string or traits_string == "None specified":
+        return "No traits specified"
+
+    try:
+        traits = ast.literal_eval(traits_string)
+        if isinstance(traits, list):
+            return ' '.join(
+                f'<span class="trait-tag">{t.strip()}</span>' for t in traits if t
+            )
+    except (ValueError, SyntaxError):
+        pass
+
+    delimiter = ';' if ';' in traits_string else ','
+    traits = [t.strip() for t in traits_string.split(delimiter)]
+    return ' '.join(f'<span class="trait-tag">{t}</span>' for t in traits if t)
+
 def get_clean_value(value, default="Unknown"):
     """
     Gets a clean value from a string, handling common formatting issues.
@@ -316,7 +334,11 @@ else:
                 )
             ].iloc[0] 
 
-            # Build the match card with traits and fixed location included
+            md_traits = get_clean_value(md_row.get('MD_TRAITS', ''), '')
+            traits_html = generate_trait_badges(md_traits)
+            md_bio = get_clean_value(md_row.get('MD_BIO', ''), 'No bio provided')
+
+            # Build the match card with traits, bio, and fixed location included
             st.markdown(
                 f"""<div class="match-card">
                 <div style="display: flex; justify-content: space-between; align-items: center;">
@@ -326,7 +348,10 @@ else:
                 <p><strong>Email:</strong> {md_row['EMAIL']}</p>
                 <p><strong>Capacity:</strong> {match.get('capacity_status', 'Available')}</p>
                 <p><strong>State:</strong> <span class="trait-tag state-tag">{md_row['RESIDING_STATE']}</span></p>
-                <p><strong>Personality Traits:</strong> No traits specified</p>
+                <p><strong>Personality Traits:</strong> {traits_html}</p>
+                <div class="match-details">
+                    <p><strong>Personal Bio:</strong> {md_bio}</p>
+                </div>
                 <div class="match-reason">
                     <p><strong>Why this match works:</strong> {match['reasoning']}</p>
                 </div>
