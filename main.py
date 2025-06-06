@@ -1,6 +1,7 @@
 import ast
 import json
 import openai
+import orjson
 import os
 import pandas as pd
 import re
@@ -128,7 +129,7 @@ def query_openai(prompt, api_key, max_retries=2):
             }
 
             # Initialize the client
-            client = openai.OpenAI(api_key=api_key)
+            client = openai.OpenAI(api_key=openai_api_key)
 
             # Make the API request
             response = client.chat.completions.create(
@@ -159,11 +160,11 @@ def query_openai(prompt, api_key, max_retries=2):
 
             elif attempt == max_retries - 1:
                 st.error(f"API error: {error_str}")
-                return json.dumps({"error": f"API error: {error_str}"}), {"model": current_model}
+                return orjson.dumps({"error": f"API error: {error_str}"}), {"model": current_model}
 
             else:
                 st.error(f"API error: {error_str}")
-                return json.dumps({"error": f"API error: {error_str}"}), {"model": current_model}
+                return orjson.dumps({"error": f"API error: {error_str}"}), {"model": current_model}
 
 ########################################################
 # Page config
@@ -372,10 +373,6 @@ else:
             )
 
             ratings = {}
-            for name in selected_match_names:
-                ratings[name] = st.slider(
-                    f"Rate match for {name}", 1, 10, 8, key=f"rating_{name}"
-                )
 
             feedback = st.text_area(
                 "Provide any feedback or rationale on how well the matching process went.",
@@ -392,15 +389,13 @@ else:
                     "User": st.user.name,
                     "Provider": provider["SUBJECT"],
                     "Provider Email": provider["PROVIDER_EMAIL"],
-                    "Provider Data": json.dumps(st.session_state.get("provider_data", {})),
-                    "Prompt": st.session_state.get("prompt_text", ""),
+                    "Provider Data": orjson.dumps(st.session_state.get("provider_data", {})),
                     "AI Model": st.session_state.get("model_params", {}).get("model", ""),
-                    "Model Params": json.dumps(st.session_state.get("model_params", {})),
+                    "Model Params": orjson.dumps(st.session_state.get("model_params", {})),
                     "Raw Results": st.session_state.get("raw_results", ""),
                     "Query Sent At": st.session_state.get("query_start", ""),
                     "Request Duration (s)": st.session_state.get("query_duration", ""),
-                    "Selected MD(s)": json.dumps(selected_match_names),
-                    "Ratings": json.dumps(ratings),
+                    "Selected MD(s)": orjson.dumps(selected_match_names),
                     "Feedback": feedback,
                 }
 
