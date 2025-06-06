@@ -99,6 +99,24 @@ def generate_service_badges(service_string):
     services = [s.strip() for s in service_string.split(delimiter)]
     return ' '.join(f'<span class="service-badge">{s}</span>' for s in services if s)
 
+def generate_trait_badges(traits_string):
+    """Generate HTML badges for personality traits."""
+    if not traits_string or traits_string == "None specified":
+        return "No traits specified"
+
+    try:
+        traits = ast.literal_eval(traits_string)
+        if isinstance(traits, list):
+            return ' '.join(
+                f'<span class="trait-tag">{t.strip()}</span>' for t in traits if t
+            )
+    except (ValueError, SyntaxError):
+        pass
+
+    delimiter = ';' if ';' in traits_string else ','
+    traits = [t.strip() for t in traits_string.split(delimiter)]
+    return ' '.join(f'<span class="trait-tag">{t}</span>' for t in traits if t)
+
 def get_clean_value(value, default="Unknown"):
     """
     Gets a clean value from a string, handling common formatting issues.
