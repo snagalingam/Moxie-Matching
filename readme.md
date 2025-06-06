@@ -4,27 +4,27 @@ This project is a web application designed to match nurses with medical director
 
 ## Setup Instructions
 
-1. **Clone the Repository**: Clone this repository to your local machine.
+1. Clone the Repository: Clone this repository to your local machine.
 
    ```bash
    git clone <repository-url>
    cd Moxie-Matching
    ```
 
-2. **Create a Virtual Environment**: It's recommended to use a virtual environment to manage dependencies.
+2. Create a Virtual Environment: It's recommended to use a virtual environment to manage dependencies.
 
    ```bash
    python3 -m venv venv
    source venv/bin/activate
    ```
 
-3. **Install Dependencies**: Install the required packages using pip.
+3. Install Dependencies: Install the required packages using pip.
 
    ```bash
    pip install -r requirements.txt
    ```
 
-4. **Configure Environment Variables**: Create a `.env` file in the root directory and add your OpenAI API key and any other necessary environment variables.
+4. Configure Environment Variables: Create a `.streamlit/secrets.toml` file add your OpenAI API key and any other necessary environment variables.
 
    ```
    OPENAI_API_KEY=your_openai_api_key
