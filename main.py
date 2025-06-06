@@ -316,6 +316,9 @@ else:
                     provider_key = provider["PROVIDER_EMAIL"]
                     st.session_state["provider_matches"][provider_key] = matches
 
+                    provider_key = provider["PROVIDER_EMAIL"]
+                    st.session_state["provider_matches"][provider_key] = matches
+
     if "last_matches" in st.session_state:    
         # Display matches
         st.markdown(f"<h3 class='subheader'>Top MD Matches for {provider['SUBJECT']}</h3><br>", unsafe_allow_html=True)

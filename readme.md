@@ -4,22 +4,20 @@ This project is a web application designed to match nurses with medical director
 
 ## Setup Instructions
 
-1. Clone the Repository: Clone this repository to your local machine.
 
+1. Clone the Repository: Clone this repository to your local machine.
    ```bash
    git clone <repository-url>
    cd Moxie-Matching
    ```
 
 2. Create a Virtual Environment: It's recommended to use a virtual environment to manage dependencies.
-
    ```bash
    python3 -m venv venv
    source venv/bin/activate
    ```
 
 3. Install Dependencies: Install the required packages using pip.
-
    ```bash
    pip install -r requirements.txt
    ```
