@@ -246,16 +246,32 @@ else:
     # Sort by TICKET_STATUS
     providers_sorted = providers_df.sort_values("TICKET_STATUS", ascending=False)
 
+    # Initialize dict to keep matches for each provider
+    if "provider_matches" not in st.session_state:
+        st.session_state["provider_matches"] = {}
+
     # Display a dropdown with a blank option at the beginning
-    selected_provider = st.selectbox("Select a provider to match:", [""] + providers_sorted["DISPLAY"].tolist())
+    selected_provider = st.selectbox(
+        "Select a provider to match:",
+        [""] + providers_sorted["DISPLAY"].tolist(),
+        key="selected_provider",
+    )
 
     # Filter the dataframe only if a provider is selected
     if selected_provider:
         provider_data = providers_df[providers_df["DISPLAY"] == selected_provider]
-        provider = provider_data.iloc[0]  
-        display_provider_details(provider) 
+        provider = provider_data.iloc[0]
+        display_provider_details(provider)
+
+        provider_key = provider["PROVIDER_EMAIL"]
+        matches_by_provider = st.session_state["provider_matches"]
+        if provider_key in matches_by_provider:
+            st.session_state["last_matches"] = matches_by_provider[provider_key]
+        else:
+            st.session_state.pop("last_matches", None)
     else:
         provider = None
+        st.session_state.pop("last_matches", None)
 
     service_requirements = st.text_area("Any additional requirements or preferences:", height=100, 
                                     placeholder="E.g., Looking for a mentor in fillers, prefer someone with teaching experience, etc.")
@@ -296,6 +312,9 @@ else:
 
                     # Cache matches in session state
                     st.session_state["last_matches"] = matches
+
+                    provider_key = provider["PROVIDER_EMAIL"]
+                    st.session_state["provider_matches"][provider_key] = matches
 
     if "last_matches" in st.session_state:    
         # Display matches
