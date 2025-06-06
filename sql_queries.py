@@ -28,7 +28,9 @@ AVAILABLE_MDS_QUERY = """
     LICENSED_STATES,
     EXPERIENCE_LEVEL,
     ACCEPTING_STATUS,
-    ACCEPTED_SERVICES
+    ACCEPTED_SERVICES,
+    MD_TRAITS,
+    MD_BIO
   FROM analytics.dbt.hubspot_md_contacts_mart
   WHERE ACCEPTING_STATUS IN ('Open', 'Open - Mid Level Only')
 """
