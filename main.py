@@ -108,7 +108,11 @@ def get_clean_value(value, default="Unknown"):
 
 # Function to call OpenAI API with fallback to GPT-3.5
 def query_openai(prompt, api_key, max_retries=2):
-    # First try with the primary model (GPT-4)
+    """Call the OpenAI API and return the raw response text along with
+    the model and parameters used. Falls back to GPT-3.5 if the primary
+    model fails.
+    """
+
     primary_model = "gpt-4-turbo-preview"
     fallback_model = "gpt-3.5-turbo"
     
@@ -116,56 +120,50 @@ def query_openai(prompt, api_key, max_retries=2):
         try:
             # Choose model based on the attempt number
             current_model = primary_model if attempt == 0 else fallback_model
-            
+
+            params = {
+                "model": current_model,
+                "max_tokens": 4000,
+                "temperature": 0.2,
+            }
+
             # Initialize the client
-            client = openai.OpenAI(api_key=openai_api_key)
-            
+            client = openai.OpenAI(api_key=api_key)
+
             # Make the API request
             response = client.chat.completions.create(
-                model=current_model,
-                max_tokens=4000,
-                temperature=0.2,
                 messages=[
                     {"role": "system", "content": """
-                        You are a medical staffing expert at Moxie. You help match nurses with medical 
-                        directors based on their location, experience, services offered, personality traits, 
-                        and other relevant factors. You always prioritize state licensing requirements (especially 
-                        for California) and capacity limitations. You always respond in JSON format as specified 
+                        You are a medical staffing expert at Moxie. You help match nurses with medical
+                        directors based on their location, experience, services offered, personality traits,
+                        and other relevant factors. You always prioritize state licensing requirements (especially
+                        for California) and capacity limitations. You always respond in JSON format as specified
                         in the prompts.
                     """},
-                    {"role": "user", "content": prompt}
-                ]
+                    {"role": "user", "content": prompt},
+                ],
+                **params,
             )
-            # Get the content and clean it
+
             content = response.choices[0].message.content.strip()
-            
-            # Try to parse the JSON
-            try:
-                parsed = json.loads(content)
-                # Return the parsed JSON directly without re-serializing
-                return parsed
-            except json.JSONDecodeError:
-                # If parsing fails, return the cleaned content as is
-                return content
+
+            return content, params
             
         except Exception as e:
             error_str = str(e)
-            
-            # If this was the primary model and we got an overloaded error
+
             if attempt == 0 and "overloaded_error" in error_str:
-                st.warning(f"Primary AI model is busy. Trying with a faster model...")
-                time.sleep(1)  # Brief pause before retrying
+                st.warning("Primary AI model is busy. Trying with a faster model...")
+                time.sleep(1)
                 continue
-                
-            # If this was the fallback model or another error
+
             elif attempt == max_retries - 1:
                 st.error(f"API error: {error_str}")
-                return {"error": f"API error: {error_str}"}
-                
-            # If this was the primary model but not an overloaded error
+                return json.dumps({"error": f"API error: {error_str}"}), {"model": current_model}
+
             else:
                 st.error(f"API error: {error_str}")
-                return {"error": f"API error: {error_str}"}
+                return json.dumps({"error": f"API error: {error_str}"}), {"model": current_model}
 
 ########################################################
 # Page config
@@ -276,26 +274,27 @@ else:
                 if error:
                     st.error(error)
                 else:
-                    response = query_openai(prompt, openai_api_key)
-                    matches = None
-                    
-                    # Format the responses
-                    if isinstance(response, dict):
-                        matches = response
-                    elif isinstance(response, str):
-                        cleaned_response = clean_json_response(response)
-                        try:
-                            matches = json.loads(cleaned_response)
-                        except json.JSONDecodeError as e:
-                            st.error(f"Error parsing JSON response here: {str(e)}")
-                            st.text(f"Raw response: {response}")
-                            matches = None
-                    else:
-                        st.error("The AI did not return a valid JSON response. Please try again or check your API key/usage.")
-                        st.text(f"Raw response: {response}")
+                    query_start = time.time()
+                    raw_response, model_params = query_openai(prompt, openai_api_key)
+                    duration = time.time() - query_start
 
-                    # Cache matches in session state
+                    matches = None
+                    cleaned_response = clean_json_response(raw_response)
+                    try:
+                        matches = json.loads(cleaned_response)
+                    except json.JSONDecodeError as e:
+                        st.error(f"Error parsing JSON response here: {str(e)}")
+                        st.text(f"Raw response: {raw_response}")
+                        matches = None
+
+                    # Cache relevant information in session state for logging
                     st.session_state["last_matches"] = matches
+                    st.session_state["prompt_text"] = prompt
+                    st.session_state["model_params"] = model_params
+                    st.session_state["raw_results"] = cleaned_response
+                    st.session_state["provider_data"] = provider.to_dict()
+                    st.session_state["query_start"] = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(query_start))
+                    st.session_state["query_duration"] = round(duration, 2)
 
     if "last_matches" in st.session_state:    
         # Display matches
@@ -347,6 +346,12 @@ else:
                 [match["name"] for match in matches["matches"]]
             )
 
+            ratings = {}
+            for name in selected_match_names:
+                ratings[name] = st.slider(
+                    f"Rate match for {name}", 1, 10, 8, key=f"rating_{name}"
+                )
+
             feedback = st.text_area(
                 "Provide any feedback or rationale on how well the matching process went.",
                 placeholder="E.g., Excellent personality alignment. Preferred teaching experience was met."
@@ -359,10 +364,19 @@ else:
 
                 row = {
                     "Timestamp": time.strftime("%Y-%m-%d %H:%M:%S"),
+                    "User": st.user.name,
                     "Provider": provider["SUBJECT"],
                     "Provider Email": provider["PROVIDER_EMAIL"],
-                    "Selected MD(s)": ", ".join(selected_match_names),
-                    "Feedback": feedback
+                    "Provider Data": json.dumps(st.session_state.get("provider_data", {})),
+                    "Prompt": st.session_state.get("prompt_text", ""),
+                    "AI Model": st.session_state.get("model_params", {}).get("model", ""),
+                    "Model Params": json.dumps(st.session_state.get("model_params", {})),
+                    "Raw Results": st.session_state.get("raw_results", ""),
+                    "Query Sent At": st.session_state.get("query_start", ""),
+                    "Request Duration (s)": st.session_state.get("query_duration", ""),
+                    "Selected MD(s)": json.dumps(selected_match_names),
+                    "Ratings": json.dumps(ratings),
+                    "Feedback": feedback,
                 }
 
                 try:
