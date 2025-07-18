@@ -198,7 +198,7 @@ else:
 ########################################################
     st.markdown("<h1 class='main-header'>Moxie Provider-MD Matching System</h1>", unsafe_allow_html=True)
     st.markdown("<div class='powered-by'>Powered by ChatGPT</div>", unsafe_allow_html=True)
-
+    
     # Get OpenAI API key from environment variable
     openai_api_key = os.getenv("OPENAI_API_KEY", "")
 
@@ -209,18 +209,16 @@ else:
     @st.cache_data
     def load_md_data():
         try: 
-            doctors_df = conn.query(AVAILABLE_MDS_QUERY, ttl=600)
+            doctors_df = conn.query(AVAILABLE_MDS_QUERY, ttl=0)
             return doctors_df
-        
         except Exception as e:
             return None
 
     @st.cache_data
     def load_provider_data():
         try: 
-            providers_df = conn.query(TICKETS_QUERY, ttl=600)
+            providers_df = conn.query(TICKETS_QUERY, ttl=0)
             return providers_df
-        
         except Exception as e:
             return None
 
@@ -371,18 +369,24 @@ else:
             Use this form to provide feedback on the quality and accuracy of the matching algorithm.
             This helps us improve future matches and track performance over time.
         """)
+        
+        # Clear form state BEFORE rendering
+        if st.session_state.get("clear_form"):
+            st.session_state["selected_match_names"] = []
+            st.session_state["feedback_text"] = ""
+            st.session_state["clear_form"] = False
 
         with st.form("final_match_form"):
             selected_match_names = st.multiselect(
-                "Which MDs will you be reaching out to match with this provider?",
-                [match["name"] for match in matches["matches"]]
+                "Which MDs will you be reaching out to match with this provider? (leave blank if none)",
+                [match["name"] for match in matches["matches"]],
+                key="selected_match_names"
             )
-
-            ratings = {}
 
             feedback = st.text_area(
                 "Provide any feedback or rationale on how well the matching process went.",
-                placeholder="E.g., Excellent personality alignment. Preferred teaching experience was met."
+                placeholder="E.g., Excellent personality alignment. Preferred teaching experience was met.",
+                key="feedback_text"
             )
 
             submit = st.form_submit_button("Submit to Google Sheets")
@@ -401,13 +405,17 @@ else:
                     "Raw Results": st.session_state.get("raw_results", ""),
                     "Query Sent At": st.session_state.get("query_start", ""),
                     "Request Duration (s)": st.session_state.get("query_duration", ""),
-                    "Selected MD(s)": orjson.dumps(selected_match_names),
+                    "Selected MD(s)": (
+                        orjson.dumps(selected_match_names)
+                        if selected_match_names
+                        else "None"
+                    ),
                     "Feedback": feedback,
                 }
 
                 try:
-                    # Read existing data
-                    existing_data = conn_gsheet.read()
+                    # Fetch the latest data each time to avoid overwriting
+                    existing_data = conn_gsheet.read(ttl=0)
 
                     # Add new row
                     new_row_df = pd.DataFrame([row])
@@ -415,7 +423,16 @@ else:
 
                     # Push update
                     conn_gsheet.update(data=updated_data)
+                    
+                    # Clear any cached data so the next read fetches fresh rows
+                    st.toast("✅ Your decision and feedback have been submitted successfully!")
 
-                    st.success("✅ Your decision and feedback have been submitted successfully!")
+                    time.sleep(2)
+                    
+                    # Set flag and rerun to clear form on next cycle
+                    st.session_state["clear_form"] = True
+                    st.rerun()
+                    
                 except Exception as e:
                     st.error(f"❌ Failed to write to Google Sheet: {e}")    # Clear session state
+                    

@@ -117,7 +117,7 @@ def create_prompt(doctors_df, provider, filters=None):
         ]
     }
     
-    Only include the JSON in your response, nothing else.
+    Only include the JSON in your response, nothing else. Make sure to include at least 10 matches. 
     """
     
     return prompt, None

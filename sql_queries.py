@@ -16,7 +16,6 @@ SELECT
 FROM analytics.dbt.hubspot_md_tickets_mart 
 WHERE bird_eats_bug_email IS NOT NULL
     AND ticket_status = 'Pending (MD Matching)'
-    AND subject NOT LIKE '%Match 2%'
 """
 
 # Get all MDs that are accepting matches
