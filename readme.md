@@ -40,7 +40,3 @@ This project is a web application designed to match nurses with medical director
 
 - **Streamlit Configuration**: The `.streamlit/config.toml` file contains configuration settings for the Streamlit app.
 - **Secrets Management**: Use `.streamlit/secrets.toml` to manage sensitive information like API keys and database credentials.
-
-## License
-
-This project is licensed under the MIT License.
